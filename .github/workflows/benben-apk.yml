@@ -1,0 +1,25 @@
+name: BenBen standalone APK
+on:
+  push:
+    branches: [benben-assistant-v1]
+    paths: ['benben-android/**', '.github/workflows/benben-apk.yml']
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build independent APK
+        working-directory: benben-android
+        run: gradle :app:assembleDebug --no-daemon
+      - name: Publish APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BenBen-Assistant-preview-APK
+          path: benben-android/app/build/outputs/apk/debug/app-debug.apk
