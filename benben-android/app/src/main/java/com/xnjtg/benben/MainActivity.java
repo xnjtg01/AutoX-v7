@@ -19,7 +19,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "0.6.0";
+  private static final String VERSION = "0.7.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -107,9 +107,9 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n集中画面采样：只需启动一次，然后在游戏里操作各个功能界面。最多采集20张，约90秒；不会点击游戏或上传截图。");
+    collection.setText("\n集中画面采样：自动过滤重复画面，最多20张不同截图，最长3分钟。识别到“欢迎回来/离线收益”弹窗时，仅尝试点击一次确定；其他界面不会自动操作。不上传截图。");
     root.addView(collection);
-    addButton(root,"▶ 一键开始画面批量采样（5秒后切换游戏）",v->{
+    addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(!captureSession.start())record("INFO","画面采样","采样正在进行，或无法创建目录");
     });
     addButton(root,"■ 停止画面采样",v->{
