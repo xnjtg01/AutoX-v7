@@ -27,14 +27,16 @@ public final class DomesticScreenNavigation {
   }
   public boolean missionPanel(Bitmap b) {
     int blue=sample(b,.5f,.157f);
-    if(!(Color.blue(blue)>Color.red(blue)+34 &&
-        Color.green(blue)>Color.red(blue)+30))return false;
+    boolean blueBar=Color.blue(blue)>Color.red(blue)+34 &&
+        Color.green(blue)>Color.red(blue)+30;
     int left=sample(b,.25f,.875f),right=sample(b,.68f,.875f);
     boolean leftPale=Color.red(left)>210&&Color.green(left)>200&&Color.blue(left)>185;
     boolean rightPale=Color.red(right)>210&&Color.green(right)>200&&Color.blue(right)>185;
     boolean leftBrown=Color.red(left)>105&&Color.red(left)<185&&Color.green(left)<150;
     boolean rightBrown=Color.red(right)>105&&Color.red(right)<185&&Color.green(right)<150;
-    return (leftPale&&rightBrown)||(rightPale&&leftBrown);
+    // Growth page has a cyan heading; daily page may change its heading, but
+    // retains the inverted two-tab palette at the same fixed bottom positions.
+    return (blueBar&&leftPale&&rightBrown)||(rightPale&&leftBrown);
   }
   public boolean mailPanel(Bitmap b) {
     int middle=sample(b,.50f,.175f),top=sample(b,.5f,.03f),bottom=sample(b,.5f,.96f);
@@ -52,7 +54,7 @@ public final class DomesticScreenNavigation {
       ChineseOcr.Result scanned=ocr.read(b);
       String all=ChineseOcr.compact(scanned.allText);
       if(all.contains("欢迎回来")&&all.contains("离线"))return Page.WELCOME;
-      if(all.contains("成长任务")&&all.contains("主线任务"))return Page.MISSIONS;
+      if(all.contains("成长任务")&&(all.contains("主线任务")||all.contains("每日任务")))return Page.MISSIONS;
       if(all.contains("邮件")&&all.contains("联盟")&&all.contains("系统"))return Page.MAIL;
       if(VisualEngine.city(b)){
         String bottom=ChineseOcr.compact(scanned.inArea(
