@@ -197,7 +197,7 @@ public final class CaptureSession {
    */
   private void rewardLoop() {
     File temp=new File(sessionDir,"reward-working.png");
-    listener.onEvent("START","邮件奖励","5秒后切换游戏：运行 Kingshot 邮件领取任务，缺少可靠图片时自动跳过");
+    listener.onEvent("START","奖励领取","5秒后切换游戏：运行 Kingshot 邮件+每日任务领取流程，缺少可靠图片时跳过");
     try {
       for(int i=5;i>0&&!stopRequested;i--)Thread.sleep(1000);
       if(stopRequested)return;
@@ -216,12 +216,23 @@ public final class CaptureSession {
         ()->stopRequested
       );
       int claims=mail.run();
-      listener.onEvent("DONE","邮件奖励","执行结束；观察到领取按钮消失 "+claims+" 次；不代表邮件内容已全部领取");
+      listener.onEvent("INFO","奖励领取","邮件模块：观察到领取按钮消失 "+claims+" 次");
+      if(!stopRequested){
+        KingshotClaimMissions missions=new KingshotClaimMissions(matcher,
+          new KingshotClaimMail.Screen(){
+            @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(temp);}
+            @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
+          },
+          (level,module,message)->listener.onEvent(level,module,message),
+          ()->stopRequested);
+        int missionsClaimed=missions.run();
+        listener.onEvent("DONE","奖励领取","邮件疑似领取 "+claims+" 次，任务疑似领取 "+missionsClaimed+" 次；仅按按钮变化判断，需要游戏验证");
+      }
     }catch(InterruptedException e){Thread.currentThread().interrupt();}
     catch(Exception e){failures.add("邮件奖励："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
     finally {
       temp.delete();running=false;
-      listener.onEvent("DONE","邮件奖励","已结束，截图 "+successes.size()+" 张，状态和证据可在 ZIP 中检查");
+      listener.onEvent("DONE","奖励领取","已结束，截图 "+successes.size()+" 张，状态和证据可在 ZIP 中检查");
     }
   }
 
