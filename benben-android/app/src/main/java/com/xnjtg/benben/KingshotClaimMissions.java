@@ -95,13 +95,8 @@ public final class KingshotClaimMissions {
       try{
         screen.save(daily,"每日任务-切换后");
         if(!dailyTabSelected(daily)){
-          String visible="";
-          try{visible=ChineseOcr.compact(ocr.read(daily).allText);}
-          catch(Exception e){log("WARN","每日任务切换后 OCR："+e.getMessage());}
-          if(!visible.contains("每日任务")){
-            log("FAIL","底部每日任务没有成功切换，跳过后续领取");
-            return completed;
-          }
+          log("FAIL","未检测到右侧每日任务标签被选中的视觉状态；拒绝按内容猜测领取");
+          return completed;
         }
       }finally{daily.recycle();}
       for(int i=0;i<4&&!stopped.isStopped();i++){
