@@ -64,7 +64,7 @@ public final class CaptureSession {
           int w=bmp.getWidth(),h=bmp.getHeight();
           boolean welcome=isWelcomeBackPopup(bmp);
           long[] sig=signature(bmp);
-          boolean different=welcome || !similar(sig,lastSignature);
+          boolean different=!similar(sig,lastSignature);
           if(different) {
             Bitmap small=bmp;
             try {
