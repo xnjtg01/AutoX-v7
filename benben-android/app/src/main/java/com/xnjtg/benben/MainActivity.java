@@ -127,6 +127,15 @@ public class MainActivity extends Activity {
     logView=new TextView(this);logView.setTextIsSelectable(true);logView.setTextSize(12);root.addView(logView);
     preview=new ImageView(this);preview.setAdjustViewBounds(true);preview.setMaxHeight(420);root.addView(preview);
     setContentView(scroll);
+    try {
+      File previous=new File(getFilesDir(),"benben-events.log");
+      if(previous.isFile()) {
+        byte[] history=java.nio.file.Files.readAllBytes(previous.toPath());
+        int from=Math.max(0,history.length-18000);
+        records.append(new String(history,from,history.length-from,StandardCharsets.UTF_8));
+        logView.setText(records.toString());
+      }
+    }catch(Exception e){android.util.Log.w("BenBenAssistant","Cannot load prior log",e);}
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
   }
 }
