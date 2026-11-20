@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.1.0";
+  private static final String VERSION = "1.2.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
       +"screen="+getResources().getDisplayMetrics().widthPixels+"x"+getResources().getDisplayMetrics().heightPixels+"\n"
       +"lastAccessibilityPackage="+BenBenAccessibilityService.lastPackage+"\n"
       +"lastAccessibilityEvent="+BenBenAccessibilityService.lastEvent+"\n"
-      +"note=本版本不上传日志。联盟互助快捷按钮支持单次尝试，其余六项未实现。\n"
+      +"note=本版本不上传日志。联盟互助和邮件奖励有部分代码，其他任务尚未实现或仅有入口。\n"
       +"---- events ----\n"+records.toString();
   }
   private void saveReport(){
@@ -146,6 +146,15 @@ public class MainActivity extends Activity {
       overlay.show("奔奔助手 V"+VERSION+"\n自动互助任务准备中");
       if(!captureSession.startAutoHelp())record("INFO","联盟互助","已有任务运行，未重复启动");
     });
+    addButton(root,"★ Kingshot 邮件奖励领取（系统／联盟／战斗）",v->{
+      if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
+        record("INFO","悬浮窗","需要先授权悬浮窗以保证截图干净且可以停止");
+        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
+        return;
+      }
+      overlay.show("奔奔助手 V"+VERSION+"\n邮件奖励任务准备中");
+      if(!captureSession.startRewards())record("INFO","邮件奖励","已有任务运行");
+    });
     addButton(root,"■ 停止画面采样",v->{
       captureSession.stop();
       overlay.update("奔奔助手 V"+VERSION+"\\n正在停止采样...");
@@ -169,7 +178,16 @@ public class MainActivity extends Activity {
     tasksLabel.setText("\n七项任务：点击逐项检查当前实现状态（未完成任务不会执行）。");
     root.addView(tasksLabel);
     for(String name:TASKS){
-      if("联盟帮助".equals(name)){
+      if("自动领取奖励".equals(name)){
+        addButton(root,"测试 · 邮件奖励（Kingshot 三分页流程）",v->{
+          if(Build.VERSION.SDK_INT>=23&&!Settings.canDrawOverlays(this)){
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
+            return;
+          }
+          overlay.show("奔奔助手 V"+VERSION+"\n邮件奖励");
+          if(!captureSession.startRewards())record("INFO","邮件奖励","已有任务运行");
+        });
+      }else if("联盟帮助".equals(name)){
         addButton(root,"测试 · 联盟帮助（单次实测）",v->{
           if(Build.VERSION.SDK_INT>=23&&!Settings.canDrawOverlays(this)){
             startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
@@ -187,7 +205,7 @@ public class MainActivity extends Activity {
       try{record("OK","全量诊断/Root",RootBridge.checkRoot());}
       catch(Exception e){record("FAIL","全量诊断/Root",e.toString());}
       record("INFO","全量诊断/无障碍",BenBenAccessibilityService.lastPackage);
-      for(String name:TASKS)record("联盟帮助".equals(name)?"AVAILABLE_SINGLE_TAP":"NOT_IMPLEMENTED",name,"联盟帮助仅支持单次手势模板匹配，其他任务尚未接入");
+      for(String name:TASKS)record(("联盟帮助".equals(name)||"自动领取奖励".equals(name))?"PARTIAL_IMPLEMENTATION":"NOT_IMPLEMENTED",name,"联盟互助提供单次图像匹配，奖励领取仅邮件三个分页，其余任务尚未完成");
       record("OK","全量诊断","基础诊断结束；截图需要使用单独的 5 秒倒计时入口");
     }));
     addButton(root,"⑦ 复制完整错误报告",v->{
