@@ -243,7 +243,7 @@ public final class CaptureSession {
           @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
         },
         (level,module,message)->listener.onEvent(level,module,message),
-        ()->stopRequested
+        ()->stopRequested,chineseOcr
       );
       int claims=mail.run();
       listener.onEvent("INFO","奖励领取","邮件模块：观察到领取按钮消失 "+claims+" 次");
@@ -267,6 +267,14 @@ public final class CaptureSession {
   }
 
 
+  private DomesticScreenNavigation navigation(final File screenshotFile){
+    return new DomesticScreenNavigation(new DomesticScreenNavigation.IO(){
+      public Bitmap screenshot()throws Exception{return cleanScreenshot(screenshotFile);}
+      public void save(Bitmap b,String name)throws Exception{saveTourFrame(b,name);}
+      public void event(String level,String module,String message){listener.onEvent(level,module,message);}
+      public boolean stopped(){return stopRequested;}
+    },chineseOcr,matcher);
+  }
   private KingshotMarchTasks marchEngine(final File screenshotFile){
     return new KingshotMarchTasks(matcher,new KingshotMarchTasks.IO(){
       @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(screenshotFile);}
@@ -315,13 +323,22 @@ public final class CaptureSession {
       };
       KingshotClaimMail.Stopped stopped=()->stopRequested;
       KingshotClaimMail.Events events=(level,module,message)->listener.onEvent(level,module,message);
-      // No cross-task blind clicking. Every module starts with its own page gate.
+      // Every module first restores and re-verifies the domestic city screen.
+      DomesticScreenNavigation nav=navigation(temp);
       try{
-        new KingshotClaimMail(matcher,screen,events,stopped).run();
+        new KingshotClaimMail(matcher,screen,events,stopped,chineseOcr).run();
       }catch(Exception e){failures.add("邮件："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
+      if(!stopRequested && !nav.restoreCity()){
+        listener.onEvent("FAIL","七项巡检","邮件任务后未能恢复城镇，后续任务停止");
+        return;
+      }
       if(!stopRequested){
         try{new KingshotClaimMissions(matcher,screen,events,stopped,chineseOcr).run();}
         catch(Exception e){failures.add("任务："+e);listener.onEvent("FAIL","每日任务",e.toString());}
+      }
+      if(!stopRequested && !nav.restoreCity()){
+        listener.onEvent("FAIL","七项巡检","每日任务后仍处于非城镇界面，停止后续任务");
+        return;
       }
       if(!stopRequested){
         Bitmap pre=cleanScreenshot(temp);
@@ -346,6 +363,10 @@ public final class CaptureSession {
       String[] names={"训练士兵","加入集结","资源采集","自动打野怪"};
       for(int i=0;i<tasks.length&&!stopRequested;i++){
         try{
+          if(!nav.restoreCity()){
+            listener.onEvent("FAIL","七项巡检",names[i]+"执行前未能返回城镇，中断任务队列");
+            break;
+          }
           boolean ok=engine.run(tasks[i]);
           listener.onEvent(ok?"OK":"SKIP",names[i],ok?"已执行单次源代码移植操作，等待游戏结果核实":"不满足可靠识别条件，已跳过");
         }catch(Exception e){
