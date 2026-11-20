@@ -19,7 +19,8 @@ public final class KingshotMarchTasks {
   }
   private final KingshotImageMatcher matcher;
   private final IO io;
-  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io){this.matcher=matcher;this.io=io;}
+  private final ChineseOcr ocr;
+  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io,ChineseOcr ocr){this.matcher=matcher;this.io=io;this.ocr=ocr;}
   private void msg(String scope,String severity,String message){
     io.event(severity,scope,message);
   }
@@ -214,18 +215,39 @@ public final class KingshotMarchTasks {
     final String[] types={"步兵","骑兵","弓兵"};
     int selected=-1;
     KingshotImageMatcher.Match idle=null;
-    for(int i=0;i<status.length&&!quit();i++){
-      int[] rc=status[i];
-      KingshotImageMatcher.Match m=match(tag,"trooptraining/idle.png",.81,
-        rc[0]-12,rc[1]-16,rc[2]+32,rc[3]+34);
-      if(m.found){selected=i;idle=m;break;}
+    Bitmap menu=io.screenshot();
+    try{
+      ChineseOcr.Result scan=ocr.read(menu);
+      msg(tag,"INFO","国内服侧栏OCR="+scan.allText);
+      for(int i=0;i<status.length;i++){
+        int[] rc=status[i];
+        String raw=scan.inArea(rc[0]-20,rc[1]-12,rc[2]+60,rc[3]+28);
+        String txt=ChineseOcr.compact(raw).toLowerCase(java.util.Locale.ROOT);
+        boolean ready=(txt.contains("空闲")||txt.contains("已完成")||txt.contains("完成")||
+                       txt.contains("idle")||txt.contains("ready")||txt.contains("complete"));
+        boolean busy=(txt.contains("训练中")||txt.matches(".*[0-9]{1,2}:[0-9]{2}.*"));
+        msg(tag,"INFO",types[i]+"队列文字="+raw+"，空闲="+ready+"，忙碌="+busy);
+        if(ready&&!busy){selected=i;break;}
+      }
+    }catch(Exception e){
+      msg(tag,"WARN","中文OCR失败，改用 Kingshot 现成 Idle 图片："+e.getMessage());
+    }finally{menu.recycle();}
+    if(selected<0){
+      for(int i=0;i<status.length&&!quit();i++){
+        int[] rc=status[i];
+        KingshotImageMatcher.Match m=match(tag,"trooptraining/idle.png",.81,
+          rc[0]-12,rc[1]-16,rc[2]+32,rc[3]+34);
+        if(m.found){selected=i;idle=m;break;}
+      }
     }
-    if(selected<0||idle==null){
+    if(selected<0){
       msg(tag,"SKIP","三类兵营均未识别到 Idle；可能正在训练或中文服文本不同，拒绝猜测");
       return false;
     }
-    msg(tag,"INFO","匹配到"+types[selected]+"空闲状态，点击 "+idle.x+","+idle.y);
-    RootBridge.tap(idle.x,idle.y);
+    int clickX=idle==null?status[selected][0]+status[selected][2]/2:idle.x;
+    int clickY=idle==null?status[selected][1]+status[selected][3]/2:idle.y;
+    msg(tag,"INFO","匹配到"+types[selected]+"空闲状态，点击 "+clickX+","+clickY);
+    RootBridge.tap(clickX,clickY);
     sleep(1000);
     if(quit())return false;
     KingshotImageMatcher.Match train=match(tag,"trooptraining/train.png",.79,70,225,600,820);
