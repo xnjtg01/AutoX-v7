@@ -42,7 +42,9 @@ public final class CaptureSession {
     try {return RootBridge.screenshot(output);}
     finally {guard.after();}
   }
-  public synchronized boolean start() {
+  public synchronized boolean start() { return startMode(false); }
+  public synchronized boolean startTour() { return startMode(true); }
+  private synchronized boolean startMode(boolean tour) {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
     sessionDir=new File(root,"capture-session");
@@ -52,7 +54,7 @@ public final class CaptureSession {
     // Remove old captures so ZIP never accidentally mixes two sessions.
     File[] existing=sessionDir.listFiles();
     if(existing!=null)for(File f:existing)if(f.isFile() && f.getName().startsWith("frame_"))f.delete();
-    worker=new Thread(this::captureLoop,"benben-screen-sampler");
+    worker=new Thread(tour?this::tourLoop:this::captureLoop,"benben-screen-sampler");
     worker.start();
     return true;
   }
@@ -116,6 +118,82 @@ public final class CaptureSession {
       running=false;
       listener.onEvent("DONE","画面采样","采集结束。成功 "+successes.size()+" 帧，失败 "+failures.size()+" 帧。请返回助手点击“导出完整诊断 ZIP”。");
     }
+  }
+
+  /** Known, low-risk navigation only: city -> alliance -> back -> wilderness -> back.
+   * No recruitment, reward collection, resource dispatch, combat or account actions.
+   */
+  private void tourLoop() {
+    listener.onEvent("START","自动巡检","5秒后开始，仅自动进入联盟和野外入口。不会领取、购买或派兵。可随时点浮窗停止。");
+    File temporary=new File(sessionDir,"tour-working.png");
+    try {
+      for(int i=0;i<5&&!stopRequested;i++)Thread.sleep(1000);
+      if(stopRequested)return;
+      Bitmap city=cleanScreenshot(temporary);
+      try {
+        saveTourFrame(city,"城镇基准");
+        if(!hasBottomNavigation(city)) {
+          listener.onEvent("FAIL","自动巡检","未检测到参考城镇底部菜单，安全停止，不会自动点击。请确认已进入城镇主界面。");
+          return;
+        }
+      } finally {city.recycle();}
+      String[] names={"联盟","野外"};
+      float[] xs={.732f,.913f};
+      for(int i=0;i<names.length && !stopRequested;i++){
+        Bitmap verify=cleanScreenshot(temporary);
+        boolean valid;
+        int width=verify.getWidth(),height=verify.getHeight();
+        try{ valid=hasBottomNavigation(verify); }
+        finally{verify.recycle();}
+        if(!valid){
+          listener.onEvent("FAIL","自动巡检","进入"+names[i]+"前未确认城镇菜单，停止后续点击");
+          return;
+        }
+        int x=Math.round(width*xs[i]), y=Math.round(height*.959f);
+        listener.onEvent("INFO","自动巡检","正在打开"+names[i]+"，目标坐标："+x+","+y);
+        RootBridge.tap(x,y);
+        Thread.sleep(2000);
+        if(stopRequested)return;
+        Bitmap opened=cleanScreenshot(temporary);
+        try{
+          saveTourFrame(opened,names[i]+"页面");
+          listener.onEvent("OK","自动巡检","已记录"+names[i]+"的画面，等待后续页面识别验证");
+        }finally{opened.recycle();}
+        if(stopRequested)return;
+        RootBridge.back();
+        Thread.sleep(1500);
+      }
+      listener.onEvent("DONE","自动巡检","城镇→联盟→野外安全导航已执行。请导出诊断 ZIP 以核对真实页面是否正确。");
+    } catch(InterruptedException e){Thread.currentThread().interrupt();}
+    catch(Exception e){failures.add("自动巡检："+e);listener.onEvent("FAIL","自动巡检",e.toString());}
+    finally {
+      temporary.delete();
+      running=false;
+      listener.onEvent("DONE","自动巡检","已结束，保存 "+successes.size()+" 张截图，可回到助手导出 ZIP。");
+    }
+  }
+  private static boolean hasBottomNavigation(Bitmap bmp){
+    // Verify the pale beige fixed-bottom toolbar observed in the user's 540x960
+    // city screenshot. Abort if overlay/dialog or another app hides the toolbar.
+    int hits=0;
+    for(float x:new float[]{.02f,.19f,.36f,.53f,.70f,.97f}){
+      int px=Math.min(bmp.getWidth()-1,Math.round(bmp.getWidth()*x));
+      int py=Math.min(bmp.getHeight()-1,Math.round(bmp.getHeight()*.984f));
+      int c=bmp.getPixel(px,py);
+      int r=Color.red(c),g=Color.green(c),b=Color.blue(c);
+      if(r>=140&&r<=225&&g>=125&&g<=200&&b>=95&&b<=175&&r>g&&g>b)hits++;
+    }
+    return hits>=5;
+  }
+  private void saveTourFrame(Bitmap bitmap,String step)throws Exception{
+    File frame=new File(sessionDir,String.format(Locale.US,"frame_%03d.jpg",successes.size()+1));
+    Bitmap reduced=bitmap;
+    if(bitmap.getWidth()>540)reduced=Bitmap.createScaledBitmap(bitmap,540,Math.round(bitmap.getHeight()*540f/bitmap.getWidth()),true);
+    try(FileOutputStream out=new FileOutputStream(frame)){
+      if(!reduced.compress(CompressFormat.JPEG,78,out))throw new Exception("截图编码失败");
+    }finally{if(reduced!=bitmap)reduced.recycle();}
+    successes.add(frame.getName()+","+bitmap.getWidth()+"x"+bitmap.getHeight()+","+step);
+    listener.onEvent("OK","自动巡检",step+" 已截图，第 "+successes.size()+" 张");
   }
   // Reference image: user's 329x585 welcome-back dialog screenshot.
   // A conservative compound check: beige center panel + distinctive green button.
