@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "0.8.0";
+  private static final String VERSION = "0.9.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
     root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,16,24,30);root.setBackgroundColor(Color.rgb(247,249,252));
     scroll.addView(root);
     TextView heading=new TextView(this);heading.setText("奔奔王国助手");heading.setTextSize(24);heading.setTextColor(Color.rgb(15,43,78));root.addView(heading);
-    TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n仅诊断，不会自动操作游戏");sub.setTextSize(14);root.addView(sub);
+    TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n诊断与受控页面巡检；仅点击城镇底部已确认的联盟/野外导航");sub.setTextSize(14);root.addView(sub);
     overlay=new StatusOverlay(this,()->{captureSession.stop();record("INFO","画面采样","用户在浮窗中点击停止");});
     captureSession=new CaptureSession(getExternalFilesDir(null),this::record,new CaptureSession.ScreenshotGuard(){
       public void before()throws Exception{overlay.beforeScreenshot();}
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n集中画面采样：运行中显示可停止的小浮窗；截图时自动移除浮窗，截图后恢复。最多20张不同画面，最长3分钟。除尝试关闭一次欢迎回来弹窗外，不会自动探索各功能页面。");
+    collection.setText("\n两个模式：①被动采样（你自己切换游戏页面）；②自动巡检（只进入城镇底部联盟、野外两个已知入口并截图）。浮窗在截图时自动隐藏。七项挂机任务尚未实现。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -127,6 +127,15 @@ public class MainActivity extends Activity {
       }
       overlay.show("奔奔助手 V"+VERSION+"\\n准备开始画面采样");
       if(!captureSession.start())record("INFO","画面采样","采样正在进行，或无法创建目录");
+    });
+    addButton(root,"★ 一键自动巡检城镇/联盟/野外（5秒后切换游戏）",v->{
+      if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
+        record("INFO","悬浮窗","请先授予浮窗权限");
+        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
+        return;
+      }
+      overlay.show("奔奔助手 V"+VERSION+"\n自动页面巡检准备中");
+      if(!captureSession.startTour())record("INFO","自动巡检","已在运行采样，或无法创建目录");
     });
     addButton(root,"■ 停止画面采样",v->{
       captureSession.stop();
