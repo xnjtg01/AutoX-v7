@@ -42,9 +42,10 @@ public final class CaptureSession {
     try {return RootBridge.screenshot(output);}
     finally {guard.after();}
   }
-  public synchronized boolean start() { return startMode(false); }
-  public synchronized boolean startTour() { return startMode(true); }
-  private synchronized boolean startMode(boolean tour) {
+  public synchronized boolean start() { return startMode(0); }
+  public synchronized boolean startTour() { return startMode(1); }
+  public synchronized boolean startAutoHelp() { return startMode(2); }
+  private synchronized boolean startMode(int mode) {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
     sessionDir=new File(root,"capture-session");
@@ -54,7 +55,7 @@ public final class CaptureSession {
     // Remove old captures so ZIP never accidentally mixes two sessions.
     File[] existing=sessionDir.listFiles();
     if(existing!=null)for(File f:existing)if(f.isFile() && f.getName().startsWith("frame_"))f.delete();
-    worker=new Thread(tour?this::tourLoop:this::captureLoop,"benben-screen-sampler");
+    worker=new Thread(mode==1?this::tourLoop:(mode==2?this::autoHelpLoop:this::captureLoop),"benben-screen-sampler");
     worker.start();
     return true;
   }
@@ -71,7 +72,7 @@ public final class CaptureSession {
         try {
           Bitmap bmp=cleanScreenshot(temporary);
           int w=bmp.getWidth(),h=bmp.getHeight();
-          boolean welcome=isWelcomeBackPopup(bmp);
+          boolean welcome=VisualEngine.welcome(bmp);
           long[] sig=signature(bmp);
           boolean different=!similar(sig,lastSignature);
           if(different) {
@@ -96,7 +97,7 @@ public final class CaptureSession {
               RootBridge.tap(tx,ty);
               Thread.sleep(1250);
               Bitmap after=cleanScreenshot(temporary);
-              boolean dismissed=!isWelcomeBackPopup(after);
+              boolean dismissed=!VisualEngine.welcome(after);
               after.recycle();
               if(dismissed)listener.onEvent("OK","欢迎回来弹窗","已自动点击确定，弹窗消失");
               else listener.onEvent("FAIL","欢迎回来弹窗","点击后弹窗仍存在；已停止自动点击，请手动关闭");
@@ -117,6 +118,74 @@ public final class CaptureSession {
     finally {
       running=false;
       listener.onEvent("DONE","画面采样","采集结束。成功 "+successes.size()+" 帧，失败 "+failures.size()+" 帧。请返回助手点击“导出完整诊断 ZIP”。");
+    }
+  }
+
+
+  private boolean dismissWelcome(Bitmap first,File temp) throws Exception {
+    if(!VisualEngine.welcome(first))return true;
+    listener.onEvent("INFO","弹窗处理","识别到离线收益“欢迎回来”，准备执行可验证的确认操作");
+    for(int attempt=1; attempt<=2 && !stopRequested; attempt++) {
+      listener.onEvent("INFO","弹窗处理","点击绿色确定 第 "+attempt+" 次");
+      RootBridge.tap(VisualEngine.confirmX(first),VisualEngine.confirmY(first));
+      Thread.sleep(1400);
+      Bitmap after=cleanScreenshot(temp);
+      try {
+        if(!VisualEngine.welcome(after)) {
+          listener.onEvent("OK","弹窗处理","确认弹窗已关闭，继续识别游戏页面");
+          return true;
+        }
+      } finally {after.recycle();}
+    }
+    listener.onEvent("FAIL","弹窗处理","连续两次点击后弹窗仍存在，安全停止，不再继续点击");
+    return false;
+  }
+  /** One real, tightly scoped task: optional welcome dialog + one quick-help tap.
+   * Will not tap unless city navigation and reference icon both match.
+   */
+  private void autoHelpLoop() {
+    File temp=new File(sessionDir,"autotask-working.png");
+    listener.onEvent("START","联盟互助","5秒后进入游戏：关闭欢迎回来弹窗，并在识别到绿色握手快捷按钮时点击一次。");
+    try {
+      for(int i=5;i>0&&!stopRequested;i--)Thread.sleep(1000);
+      if(stopRequested)return;
+      Bitmap frame=cleanScreenshot(temp);
+      try{
+        saveTourFrame(frame,"任务开始画面");
+        if(!dismissWelcome(frame,temp))return;
+      }finally{frame.recycle();}
+      if(stopRequested)return;
+      Bitmap current=cleanScreenshot(temp);
+      try {
+        VisualEngine.Observation observation=VisualEngine.inspect(current);
+        listener.onEvent("INFO","联盟互助","画面判断："+observation);
+        saveTourFrame(current,"弹窗处理后画面");
+        if(!observation.city){
+          listener.onEvent("FAIL","联盟互助","无法确认城镇底栏，未执行互助点击");
+          return;
+        }
+        if(!observation.quickHelp){
+          listener.onEvent("INFO","联盟互助","未发现可确认的绿色握手互助快捷图标，可能无帮助请求，未点击");
+          return;
+        }
+        int x=VisualEngine.helpX(current),y=VisualEngine.helpY(current);
+        listener.onEvent("INFO","联盟互助","已匹配到握手快捷图标，执行单次点击："+x+","+y);
+        RootBridge.tap(x,y);
+      }finally{current.recycle();}
+      Thread.sleep(1400);
+      if(stopRequested)return;
+      Bitmap after=cleanScreenshot(temp);
+      try {
+        saveTourFrame(after,"互助点击后画面");
+        double score=VisualEngine.helpError(after);
+        if(score>=38)listener.onEvent("OK","联盟互助","点击后握手快捷图标已消失或变化；是否实际帮助成功需由游戏结果确认");
+        else listener.onEvent("INFO","联盟互助","已点击，但握手图标仍可见；未证明帮助成功，已停止避免重复点击");
+      }finally{after.recycle();}
+    }catch(InterruptedException e){Thread.currentThread().interrupt();}
+    catch(Exception e){failures.add("联盟互助："+e);listener.onEvent("FAIL","联盟互助",e.toString());}
+    finally {
+      running=false;temp.delete();
+      listener.onEvent("DONE","联盟互助","已结束，截图 "+successes.size()+" 张；可导出 ZIP 核对真实效果。");
     }
   }
 
