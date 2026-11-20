@@ -20,7 +20,16 @@ public final class KingshotMarchTasks {
   private final KingshotImageMatcher matcher;
   private final IO io;
   private final ChineseOcr ocr;
-  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io,ChineseOcr ocr){this.matcher=matcher;this.io=io;this.ocr=ocr;}
+  private final DomesticScreenNavigation navigation;
+  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io,ChineseOcr ocr){
+    this.matcher=matcher;this.io=io;this.ocr=ocr;
+    this.navigation=new DomesticScreenNavigation(new DomesticScreenNavigation.IO(){
+      public Bitmap screenshot()throws Exception{return io.screenshot();}
+      public void save(Bitmap b,String label)throws Exception{io.save(b,label);}
+      public void event(String level,String module,String message){io.event(level,module,message);}
+      public boolean stopped(){return io.stopped();}
+    },ocr,matcher);
+  }
   private void msg(String scope,String severity,String message){
     io.event(severity,scope,message);
   }
@@ -62,37 +71,32 @@ public final class KingshotMarchTasks {
     KingshotImageMatcher.Match m=match("定位",asset,confidence,0,0,720,1280);
     return m.found;
   }
-  private boolean ensureMap() throws Exception {
-    if(quit())return false;
-    if(isView("locator/map-view.png",.72)) {
-      msg("定位","OK","已经位于野外地图");
+  private boolean ensureMap()throws Exception{
+    DomesticScreenNavigation.Page page=navigation.current();
+    if(page==DomesticScreenNavigation.Page.MAP){
+      msg("定位","OK","已确认在野外地图");
       return true;
     }
-    Bitmap city=io.screenshot();
-    boolean valid;
-    try{valid=VisualEngine.city(city);io.save(city,"切换野外前");}
-    finally{city.recycle();}
-    if(!valid && !isView("locator/base-view.png",.75)){
-      msg("定位","SKIP","无法判断城镇或地图页面，停止");
+    if(!navigation.restoreCity()) {
+      msg("定位","SKIP","无法从当前页面安全回到城镇，停止野外动作");
       return false;
     }
-    // Exact bottom-right wilderness/野外 tab is user-confirmed in domestic screenshot.
     if(quit())return false;
-    msg("定位","INFO","点击已校准的城镇底部“野外”导航");
+    msg("定位","INFO","点击城镇右下角「野外」(658,1230)，等待地图状态");
     RootBridge.tap(658,1230);
-    sleep(1600);
-    if(isView("locator/map-view.png",.68))return true;
-    msg("定位","SKIP","跳转后未能识别野外标记；中止任务，避免误触");
+    sleep(1300);
+    page=navigation.current();
+    if(page==DomesticScreenNavigation.Page.MAP) {
+      msg("定位","OK","已验证进入野外地图");
+      return true;
+    }
+    msg("定位","SKIP","跳转后页面="+page+"，未确认地图，不会开始出征");
     return false;
   }
   private boolean ensureCity()throws Exception{
-    Bitmap b=io.screenshot();
-    try {
-      boolean city=VisualEngine.city(b)&&
-        matcher.findInReferenceArea(b,"locator/base-view.png",.68,0,0,720,1280).found;
-      if(!city)msg("定位","SKIP","未确认城镇主界面，停止");
-      return city;
-    }finally{b.recycle();}
+    boolean ok=navigation.restoreCity();
+    if(!ok)msg("定位","SKIP","无法确认城镇，停止后续操作");
+    return ok;
   }
   public boolean run(int mode)throws Exception{
     if(mode==FARM)return farmStone();
