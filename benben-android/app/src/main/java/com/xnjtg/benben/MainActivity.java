@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.2.0";
+  private static final String VERSION = "1.3.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
       +"screen="+getResources().getDisplayMetrics().widthPixels+"x"+getResources().getDisplayMetrics().heightPixels+"\n"
       +"lastAccessibilityPackage="+BenBenAccessibilityService.lastPackage+"\n"
       +"lastAccessibilityEvent="+BenBenAccessibilityService.lastEvent+"\n"
-      +"note=本版本不上传日志。联盟互助和邮件奖励有部分代码，其他任务尚未实现或仅有入口。\n"
+      +"note=本版本不上传日志。联盟互助、邮件及每日任务领取有源代码移植，其余任务尚未实现或仅有入口。\n"
       +"---- events ----\n"+records.toString();
   }
   private void saveReport(){
@@ -146,7 +146,7 @@ public class MainActivity extends Activity {
       overlay.show("奔奔助手 V"+VERSION+"\n自动互助任务准备中");
       if(!captureSession.startAutoHelp())record("INFO","联盟互助","已有任务运行，未重复启动");
     });
-    addButton(root,"★ Kingshot 邮件奖励领取（系统／联盟／战斗）",v->{
+    addButton(root,"★ Kingshot 奖励领取（邮件＋每日任务）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
         record("INFO","悬浮窗","需要先授权悬浮窗以保证截图干净且可以停止");
         startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
@@ -179,7 +179,7 @@ public class MainActivity extends Activity {
     root.addView(tasksLabel);
     for(String name:TASKS){
       if("自动领取奖励".equals(name)){
-        addButton(root,"测试 · 邮件奖励（Kingshot 三分页流程）",v->{
+        addButton(root,"测试 · 奖励领取（邮件＋每日任务）",v->{
           if(Build.VERSION.SDK_INT>=23&&!Settings.canDrawOverlays(this)){
             startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
             return;
@@ -205,7 +205,7 @@ public class MainActivity extends Activity {
       try{record("OK","全量诊断/Root",RootBridge.checkRoot());}
       catch(Exception e){record("FAIL","全量诊断/Root",e.toString());}
       record("INFO","全量诊断/无障碍",BenBenAccessibilityService.lastPackage);
-      for(String name:TASKS)record(("联盟帮助".equals(name)||"自动领取奖励".equals(name))?"PARTIAL_IMPLEMENTATION":"NOT_IMPLEMENTED",name,"联盟互助提供单次图像匹配，奖励领取仅邮件三个分页，其余任务尚未完成");
+      for(String name:TASKS)record(("联盟帮助".equals(name)||"自动领取奖励".equals(name))?"PARTIAL_IMPLEMENTATION":"NOT_IMPLEMENTED",name,"联盟互助提供单次图像匹配，奖励领取支持邮件三个分页及任务三标签，其余任务尚未完成");
       record("OK","全量诊断","基础诊断结束；截图需要使用单独的 5 秒倒计时入口");
     }));
     addButton(root,"⑦ 复制完整错误报告",v->{
