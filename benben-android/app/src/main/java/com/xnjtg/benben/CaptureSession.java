@@ -26,6 +26,7 @@ public final class CaptureSession {
   private final Listener listener;
   private final ScreenshotGuard guard;
   private final KingshotImageMatcher matcher;
+  private final ChineseOcr chineseOcr=new ChineseOcr();
   private volatile boolean running=false;
   private volatile boolean stopRequested=false;
   private volatile Thread worker;
@@ -86,7 +87,7 @@ public final class CaptureSession {
         try {
           Bitmap bmp=cleanScreenshot(temporary);
           int w=bmp.getWidth(),h=bmp.getHeight();
-          boolean welcome=VisualEngine.welcome(bmp);
+          boolean welcome=detectWelcome(bmp);
           long[] sig=signature(bmp);
           boolean different=!similar(sig,lastSignature);
           if(different) {
@@ -111,7 +112,7 @@ public final class CaptureSession {
               RootBridge.tap(tx,ty);
               Thread.sleep(1250);
               Bitmap after=cleanScreenshot(temporary);
-              boolean dismissed=!VisualEngine.welcome(after);
+              boolean dismissed=!detectWelcome(after);
               after.recycle();
               if(dismissed)listener.onEvent("OK","欢迎回来弹窗","已自动点击确定，弹窗消失");
               else listener.onEvent("FAIL","欢迎回来弹窗","点击后弹窗仍存在；已停止自动点击，请手动关闭");
@@ -136,22 +137,39 @@ public final class CaptureSession {
   }
 
 
+  /** Prefer the screenshot's stable visual features, with domestic Chinese OCR fallback. */
+  private boolean detectWelcome(Bitmap screenshot){
+    if(VisualEngine.welcome(screenshot))return true;
+    try {
+      String text=ChineseOcr.compact(chineseOcr.read(screenshot).allText);
+      return text.contains("欢迎回来") && (text.contains("离线")||text.contains("确定"));
+    }catch(Exception e){
+      listener.onEvent("WARN","弹窗OCR","无法读取文字，保留颜色匹配判断："+e.getMessage());
+      return false;
+    }
+  }
   private boolean dismissWelcome(Bitmap first,File temp) throws Exception {
-    if(!VisualEngine.welcome(first))return true;
-    listener.onEvent("INFO","弹窗处理","识别到离线收益“欢迎回来”，准备执行可验证的确认操作");
+    if(!detectWelcome(first))return true;
+    listener.onEvent("INFO","弹窗处理","检测到“欢迎回来／离线收益”，用 Kingshot 原坐标策略和国内服按钮位置尝试关闭");
+    // Source: GameCoordinates.WelcomeBackDismiss=(370,1011) at 720x1280.
+    // Domestic screenshot green confirm center approximately x=360, y=1025.
+    int x=VisualEngine.confirmX(first),y=VisualEngine.confirmY(first);
     for(int attempt=1; attempt<=2 && !stopRequested; attempt++) {
-      listener.onEvent("INFO","弹窗处理","点击绿色确定 第 "+attempt+" 次");
-      RootBridge.tap(VisualEngine.confirmX(first),VisualEngine.confirmY(first));
-      Thread.sleep(1400);
+      listener.onEvent("INFO","弹窗处理","安全点击确认 "+attempt+"/2，屏幕坐标 "+x+","+y);
+      RootBridge.tap(x,y);
+      Thread.sleep(1300);
       Bitmap after=cleanScreenshot(temp);
       try {
-        if(!VisualEngine.welcome(after)) {
-          listener.onEvent("OK","弹窗处理","确认弹窗已关闭，继续识别游戏页面");
+        if(!detectWelcome(after)) {
+          listener.onEvent("OK","弹窗处理","已验证欢迎弹窗不再存在");
           return true;
         }
       } finally {after.recycle();}
     }
-    listener.onEvent("FAIL","弹窗处理","连续两次点击后弹窗仍存在，安全停止，不再继续点击");
+    listener.onEvent("FAIL","弹窗处理","欢迎弹窗仍未关闭，停止自动点击并保留诊断截图");
+    Bitmap failed=cleanScreenshot(temp);
+    try {saveTourFrame(failed,"欢迎回来弹窗-关闭失败");}
+    finally {failed.recycle();}
     return false;
   }
   /** One real, tightly scoped task: optional welcome dialog + one quick-help tap.
@@ -257,7 +275,7 @@ public final class CaptureSession {
         listener.onEvent(level,module,message);
       }
       @Override public boolean stopped(){return stopRequested;}
-    });
+    },chineseOcr);
   }
   private void marchLoop(int task){
     final String[] types={"资源采集","加入集结","打野怪","训练士兵"};
