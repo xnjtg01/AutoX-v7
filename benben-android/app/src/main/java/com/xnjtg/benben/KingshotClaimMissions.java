@@ -1,6 +1,7 @@
 package com.xnjtg.benben;
 
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 
 /**
  * Limited Android port of KingshotAuto's ClaimMissionsTask.
@@ -17,11 +18,12 @@ public final class KingshotClaimMissions {
   private final KingshotClaimMail.Screen screen;
   private final KingshotClaimMail.Events events;
   private final KingshotClaimMail.Stopped stopped;
+  private final ChineseOcr ocr;
   private int completed=0;
   public KingshotClaimMissions(KingshotImageMatcher matcher,
       KingshotClaimMail.Screen screen,KingshotClaimMail.Events events,
-      KingshotClaimMail.Stopped stopped){
-    this.matcher=matcher;this.screen=screen;this.events=events;this.stopped=stopped;
+      KingshotClaimMail.Stopped stopped,ChineseOcr ocr){
+    this.matcher=matcher;this.screen=screen;this.events=events;this.stopped=stopped;this.ocr=ocr;
   }
   private void log(String level,String message){events.event(level,"每日任务",message);}
   private void pause(int ms)throws InterruptedException{Thread.sleep(ms);}
@@ -29,10 +31,49 @@ public final class KingshotClaimMissions {
     return matcher.findInReferenceArea(b,"claimmissions/missions-scroll.png",.76,0,890,230,330);
   }
   private KingshotImageMatcher.Match findTab(Bitmap b,String file)throws Exception{
-    return matcher.findInReferenceArea(b,"claimmissions/"+file+".png",.77,0,740,720,540);
+    KingshotImageMatcher.Match original=matcher.findInReferenceArea(b,
+      "claimmissions/"+file+".png",.77,0,740,720,540);
+    if(original.found)return original;
+    // Kingshot tab image templates contain English. Domestic server uses Chinese.
+    String name=file.equals("chapter")?"章节":file.equals("daily")?"每日":"成长";
+    int expectedX=file.equals("chapter")?200:file.equals("daily")?665:435;
+    try{
+      ChineseOcr.Result scan=ocr.read(b);
+      for(ChineseOcr.Item line:scan.lines){
+        if(line.box==null||!line.text.contains(name))continue;
+        int x=line.box.centerX(),y=line.box.centerY();
+        if(Math.abs(x-expectedX)<=105 && y>=750 && y<=1250){
+          log("INFO","用国内服 OCR 识别到 "+name+" 标签 x="+x+" y="+y);
+          return new KingshotImageMatcher.Match(true,x,y,.92,"OCR:"+name);
+        }
+      }
+    }catch(Exception ex){log("WARN","任务页中文 OCR 失败："+ex.getMessage());}
+    return original;
   }
   private KingshotImageMatcher.Match findClaim(Bitmap b,String file)throws Exception{
-    return matcher.findInReferenceArea(b,"claimmissions/"+file+".png",.81,45,150,630,1100);
+    KingshotImageMatcher.Match source=matcher.findInReferenceArea(b,
+      "claimmissions/"+file+".png",.81,45,150,630,1100);
+    if(source.found)return source;
+    try{
+      ChineseOcr.Result scan=ocr.read(b);
+      for(ChineseOcr.Item line:scan.lines){
+        if(line.box==null)continue;
+        String value=ChineseOcr.compact(line.text);
+        boolean target=file.equals("claim-all")?
+          (value.contains("全部领取")||value.contains("一键领取")):
+          value.equals("领取");
+        int x=line.box.centerX(),y=line.box.centerY();
+        // Claim-all is normally centered near bottom; individual claims sit on right.
+        boolean area=file.equals("claim-all")?
+          (x>=200&&x<=670&&y>=730&&y<=1250):
+          (x>=350&&x<=700&&y>=200&&y<=1180);
+        if(target&&area){
+          log("INFO","中文 OCR 识别到领取按钮："+value+" x="+x+" y="+y);
+          return new KingshotImageMatcher.Match(true,x,y,.9,"OCR:"+value);
+        }
+      }
+    }catch(Exception ex){log("WARN","领取按钮 OCR 识别失败："+ex.getMessage());}
+    return source;
   }
   private boolean changed(Bitmap a,Bitmap b) {
     int count=0,total=0;
