@@ -254,7 +254,7 @@ public final class CaptureSession {
             @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
           },
           (level,module,message)->listener.onEvent(level,module,message),
-          ()->stopRequested);
+          ()->stopRequested,chineseOcr);
         int missionsClaimed=missions.run();
         listener.onEvent("DONE","奖励领取","邮件疑似领取 "+claims+" 次，任务疑似领取 "+missionsClaimed+" 次；仅按按钮变化判断，需要游戏验证");
       }
@@ -320,7 +320,7 @@ public final class CaptureSession {
         new KingshotClaimMail(matcher,screen,events,stopped).run();
       }catch(Exception e){failures.add("邮件："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
       if(!stopRequested){
-        try{new KingshotClaimMissions(matcher,screen,events,stopped).run();}
+        try{new KingshotClaimMissions(matcher,screen,events,stopped,chineseOcr).run();}
         catch(Exception e){failures.add("任务："+e);listener.onEvent("FAIL","每日任务",e.toString());}
       }
       if(!stopRequested){
