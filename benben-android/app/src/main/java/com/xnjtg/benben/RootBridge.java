@@ -50,16 +50,35 @@ public final class RootBridge {
     if(p.exitValue()!=0)throw new Exception("Root 点击失败，退出码："+p.exitValue());
     return "Root 点击命令已执行";
   }
+  private static int scaled(int original, int actual, int reference) {
+    return Math.max(0, Math.min(actual-1, Math.round(original * actual / (float)reference)));
+  }
+  private static boolean isPanelGray(int c) {
+    int r=Color.red(c), g=Color.green(c), bl=Color.blue(c);
+    int max=Math.max(r,Math.max(g,bl)), min=Math.min(r,Math.min(g,bl));
+    int avg=(r+g+bl)/3;
+    return max-min <= 17 && avg>=56 && avg<=110;
+  }
   public static String classify(Bitmap b) {
-    // 基于用户提供的 924x2048 截图作初步颜色特征测试，并非完整图像识别。
-    int[][] probe={{100,800},{250,800},{450,1000},{100,1100},{30,900}};
-    int hit=0;
-    for(int[] p:probe){
-      int x=Math.min(b.getWidth()-1,Math.max(0,Math.round(p[0]*b.getWidth()/924f)));
-      int y=Math.min(b.getHeight()-1,Math.max(0,Math.round(p[1]*b.getHeight()/2048f)));
-      int c=b.getPixel(x,y);
-      if((Color.red(c)+Color.green(c)+Color.blue(c))/3<110)hit++;
+    // Calibrated against two user-provided, 924x2048 domestic-server screenshots:
+    // one with the march drawer open and one with it closed.
+    // Only tests the characteristic gray backgrounds of four march rows.
+    // No OCR or game-task decisions are inferred from this method.
+    final int[] xRef={115,170,405};
+    final int[] yRef={827,912,1002,1084};
+    int hits=0, total=0;
+    for(int y:yRef){
+      for(int x:xRef){
+        int px=scaled(x,b.getWidth(),924);
+        int py=scaled(y,b.getHeight(),2048);
+        if(isPanelGray(b.getPixel(px,py))) hits++;
+        total++;
+      }
     }
-    return "画面特征命中："+hit+"/5；"+(hit>=4?"疑似行军面板展开":"未确认行军面板")+"（仅粗略推断，需真实截图验证）";
+    boolean open=hits>=10;
+    return (open?"疑似行军队列已展开":"未发现已展开的行军队列")
+      +"\\n面板特征命中："+hits+"/"+total
+      +"\\n识别模式：灰色行军列表区域采样"
+      +"\\n说明：此结果尚非 OCR，不代表已准确识别队伍数量或空闲状态。";
   }
 }
