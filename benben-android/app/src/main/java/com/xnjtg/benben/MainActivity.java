@@ -7,6 +7,8 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.provider.Settings;
+import android.net.Uri;
+import android.os.Build;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.view.View;
@@ -19,13 +21,14 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "0.7.0";
+  private static final String VERSION = "0.8.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
   private ImageView preview;
   private Button target;
   private CaptureSession captureSession;
+  private StatusOverlay overlay;
   private static final int EXPORT_ZIP_REQUEST=2026;
   private void task(String title, Runnable runnable) {
     new Thread(()->{
@@ -41,6 +44,7 @@ public class MainActivity extends Activity {
     catch(Exception ignored) { android.util.Log.w("BenBenAssistant","local event log write failed",ignored); }
     if(records.length()>30000)records.delete(0,records.length()-20000);
     runOnUiThread(()->{status.setText(module+"："+message);logView.setText(records.toString());});
+    if(overlay!=null) overlay.update("奔奔助手 " + VERSION + "\\n" + level+" / "+module+"\\n"+(captureSession==null?"":("已采集 "+captureSession.frames()+" 帧")));
     android.util.Log.i("BenBenAssistant",line);
   }
   private Button addButton(LinearLayout parent,String label,View.OnClickListener callback){
@@ -74,7 +78,11 @@ public class MainActivity extends Activity {
     scroll.addView(root);
     TextView heading=new TextView(this);heading.setText("奔奔王国助手");heading.setTextSize(24);heading.setTextColor(Color.rgb(15,43,78));root.addView(heading);
     TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n仅诊断，不会自动操作游戏");sub.setTextSize(14);root.addView(sub);
-    captureSession=new CaptureSession(getExternalFilesDir(null),this::record);
+    overlay=new StatusOverlay(this,()->{captureSession.stop();record("INFO","画面采样","用户在浮窗中点击停止");});
+    captureSession=new CaptureSession(getExternalFilesDir(null),this::record,new CaptureSession.ScreenshotGuard(){
+      public void before()throws Exception{overlay.beforeScreenshot();}
+      public void after()throws Exception{overlay.afterScreenshot();}
+    });
     status=new TextView(this);status.setText("等待测试");status.setPadding(0,12,0,12);root.addView(status);
     addButton(root,"① Root 权限检测",v->task("Root 检测",()->{
       try {record("OK","Root 检测",RootBridge.checkRoot());}
@@ -107,13 +115,22 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n集中画面采样：自动过滤重复画面，最多20张不同截图，最长3分钟。识别到“欢迎回来/离线收益”弹窗时，仅尝试点击一次确定；其他界面不会自动操作。不上传截图。");
+    collection.setText("\n集中画面采样：运行中显示可停止的小浮窗；截图时自动移除浮窗，截图后恢复。最多20张不同画面，最长3分钟。除尝试关闭一次欢迎回来弹窗外，不会自动探索各功能页面。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
+      if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
+        record("INFO","悬浮窗","需要一次性授权“显示在其他应用上层”，授权后回助手再次点击开始采样");
+        Intent permission=new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+          Uri.parse("package:"+getPackageName()));
+        startActivity(permission);
+        return;
+      }
+      overlay.show("奔奔助手 V"+VERSION+"\\n准备开始画面采样");
       if(!captureSession.start())record("INFO","画面采样","采样正在进行，或无法创建目录");
     });
     addButton(root,"■ 停止画面采样",v->{
       captureSession.stop();
+      overlay.update("奔奔助手 V"+VERSION+"\\n正在停止采样...");
       record("INFO","画面采样","已请求停止，返回助手等待采样结束后可导出");
     });
     addButton(root,"⬇ 导出完整诊断 ZIP（日志＋游戏截图）",v->{
@@ -129,6 +146,7 @@ public class MainActivity extends Activity {
       save.putExtra(Intent.EXTRA_TITLE,"benben-diagnostic-"+stamp().replace(' ','_').replace(':','-')+".zip");
       startActivityForResult(save,EXPORT_ZIP_REQUEST);
     });
+    addButton(root,"隐藏悬浮窗",v->overlay.hide());
     TextView tasksLabel=new TextView(this);
     tasksLabel.setText("\n七项任务：点击逐项检查当前实现状态（未完成任务不会执行）。");
     root.addView(tasksLabel);
@@ -164,6 +182,7 @@ public class MainActivity extends Activity {
     }catch(Exception e){android.util.Log.w("BenBenAssistant","Cannot load prior log",e);}
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
   }
+  @Override protected void onDestroy(){if(overlay!=null)overlay.hide();super.onDestroy();}
   @Override protected void onActivityResult(int request,int result,Intent data) {
     super.onActivityResult(request,result,data);
     if(request!=EXPORT_ZIP_REQUEST||result!=RESULT_OK||data==null||data.getData()==null)return;
