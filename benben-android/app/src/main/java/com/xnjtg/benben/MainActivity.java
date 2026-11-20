@@ -19,12 +19,14 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "0.5.0";
+  private static final String VERSION = "0.6.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
   private ImageView preview;
   private Button target;
+  private CaptureSession captureSession;
+  private static final int EXPORT_ZIP_REQUEST=2026;
   private void task(String title, Runnable runnable) {
     new Thread(()->{
       try {runnable.run();}
@@ -72,6 +74,7 @@ public class MainActivity extends Activity {
     scroll.addView(root);
     TextView heading=new TextView(this);heading.setText("奔奔王国助手");heading.setTextSize(24);heading.setTextColor(Color.rgb(15,43,78));root.addView(heading);
     TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n仅诊断，不会自动操作游戏");sub.setTextSize(14);root.addView(sub);
+    captureSession=new CaptureSession(getExternalFilesDir(null),this::record);
     status=new TextView(this);status.setText("等待测试");status.setPadding(0,12,0,12);root.addView(status);
     addButton(root,"① Root 权限检测",v->task("Root 检测",()->{
       try {record("OK","Root 检测",RootBridge.checkRoot());}
@@ -103,6 +106,29 @@ public class MainActivity extends Activity {
     addButton(root,"④ 打开无障碍权限设置",v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
+    TextView collection=new TextView(this);
+    collection.setText("\n集中画面采样：只需启动一次，然后在游戏里操作各个功能界面。最多采集20张，约90秒；不会点击游戏或上传截图。");
+    root.addView(collection);
+    addButton(root,"▶ 一键开始画面批量采样（5秒后切换游戏）",v->{
+      if(!captureSession.start())record("INFO","画面采样","采样正在进行，或无法创建目录");
+    });
+    addButton(root,"■ 停止画面采样",v->{
+      captureSession.stop();
+      record("INFO","画面采样","已请求停止，返回助手等待采样结束后可导出");
+    });
+    addButton(root,"⬇ 导出完整诊断 ZIP（日志＋游戏截图）",v->{
+      if(captureSession.isRunning()){
+        record("INFO","导出报告","请先停止采样或等待采样完成");return;
+      }
+      if(captureSession.frames()==0){
+        record("INFO","导出报告","尚无截图，请先运行一键批量采样");return;
+      }
+      Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);
+      save.addCategory(Intent.CATEGORY_OPENABLE);
+      save.setType("application/zip");
+      save.putExtra(Intent.EXTRA_TITLE,"benben-diagnostic-"+stamp().replace(' ','_').replace(':','-')+".zip");
+      startActivityForResult(save,EXPORT_ZIP_REQUEST);
+    });
     TextView tasksLabel=new TextView(this);
     tasksLabel.setText("\n七项任务：点击逐项检查当前实现状态（未完成任务不会执行）。");
     root.addView(tasksLabel);
@@ -137,5 +163,18 @@ public class MainActivity extends Activity {
       }
     }catch(Exception e){android.util.Log.w("BenBenAssistant","Cannot load prior log",e);}
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
+  }
+  @Override protected void onActivityResult(int request,int result,Intent data) {
+    super.onActivityResult(request,result,data);
+    if(request!=EXPORT_ZIP_REQUEST||result!=RESULT_OK||data==null||data.getData()==null)return;
+    android.net.Uri uri=data.getData();
+    record("START","导出报告","正在写入 ZIP");
+    task("导出报告",()->{
+      try(java.io.OutputStream stream=getContentResolver().openOutputStream(uri)){
+        if(stream==null)throw new Exception("系统未返回可写输出流");
+        captureSession.export(stream,report());
+        record("OK","导出报告","完整诊断包已导出，包含 "+captureSession.frames()+" 张截图。可以将 ZIP 文件上传聊天。");
+      }catch(Exception e){record("FAIL","导出报告",e.toString());}
+    });
   }
 }
