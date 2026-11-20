@@ -50,6 +50,11 @@ public final class RootBridge {
     if(p.exitValue()!=0)throw new Exception("Root 点击失败，退出码："+p.exitValue());
     return "Root 点击命令已执行";
   }
+  public static void back() throws Exception {
+    Process p=start("input keyevent 4");
+    if(!p.waitFor(8,TimeUnit.SECONDS)){p.destroyForcibly();throw new Exception("返回操作超时");}
+    if(p.exitValue()!=0)throw new Exception("返回操作失败，退出码="+p.exitValue());
+  }
   private static int scaled(int original, int actual, int reference) {
     return Math.max(0, Math.min(actual-1, Math.round(original * actual / (float)reference)));
   }
