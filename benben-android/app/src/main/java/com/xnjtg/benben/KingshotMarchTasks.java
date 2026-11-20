@@ -208,8 +208,22 @@ public final class KingshotMarchTasks {
     RootBridge.tap(14,548);
     sleep(800);
     if(!match(tag,"trooptraining/side-menu.png",.76,0,180,650,750).found){
-      msg(tag,"SKIP","未识别打开后的 Town/Wilderness 侧栏，停止训练");
-      return false;
+      // International source template contains English "Town/Wilderness".
+      // Domestic server uses "城镇/野外"; verify same panel with Chinese OCR.
+      Bitmap side=io.screenshot();
+      boolean verified=false;
+      try{
+        String text=ChineseOcr.compact(ocr.read(side).allText);
+        verified=(text.contains("城镇")&&text.contains("野外")) ||
+          (text.toLowerCase(java.util.Locale.ROOT).contains("town")&&
+           text.toLowerCase(java.util.Locale.ROOT).contains("wilderness"));
+        msg(tag,"INFO","侧栏文字检测："+text+"，界面确认="+verified);
+      }catch(Exception e){msg(tag,"WARN","侧栏OCR失败："+e.getMessage());}
+      finally{side.recycle();}
+      if(!verified){
+        msg(tag,"SKIP","打开侧栏后未确认城镇/野外菜单，不再点击训练");
+        return false;
+      }
     }
     final int[][] status={{160,556,120,35},{159,630,130,40},{158,705,130,35}};
     final String[] types={"步兵","骑兵","弓兵"};
