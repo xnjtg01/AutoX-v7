@@ -46,6 +46,7 @@ public final class CaptureSession {
   public synchronized boolean start() { return startMode(0); }
   public synchronized boolean startTour() { return startMode(1); }
   public synchronized boolean startAutoHelp() { return startMode(2); }
+  public synchronized boolean startRewards() { return startMode(3); }
   private synchronized boolean startMode(int mode) {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
@@ -56,7 +57,7 @@ public final class CaptureSession {
     // Remove old captures so ZIP never accidentally mixes two sessions.
     File[] existing=sessionDir.listFiles();
     if(existing!=null)for(File f:existing)if(f.isFile() && f.getName().startsWith("frame_"))f.delete();
-    worker=new Thread(mode==1?this::tourLoop:(mode==2?this::autoHelpLoop:this::captureLoop),"benben-screen-sampler");
+    worker=new Thread(mode==1?this::tourLoop:(mode==2?this::autoHelpLoop:(mode==3?this::rewardLoop:this::captureLoop)),"benben-screen-sampler");
     worker.start();
     return true;
   }
@@ -187,6 +188,40 @@ public final class CaptureSession {
     finally {
       running=false;temp.delete();
       listener.onEvent("DONE","联盟互助","已结束，截图 "+successes.size()+" 张；可导出 ZIP 核对真实效果。");
+    }
+  }
+
+  /**
+   * Kingshot source-driven rewards: start with ClaimMailTask's System/Alliance/Battle
+   * tabs. All clicks except confirmed welcome popup require actual matching imagery.
+   */
+  private void rewardLoop() {
+    File temp=new File(sessionDir,"reward-working.png");
+    listener.onEvent("START","邮件奖励","5秒后切换游戏：运行 Kingshot 邮件领取任务，缺少可靠图片时自动跳过");
+    try {
+      for(int i=5;i>0&&!stopRequested;i--)Thread.sleep(1000);
+      if(stopRequested)return;
+      Bitmap initial=cleanScreenshot(temp);
+      try{
+        saveTourFrame(initial,"邮件奖励启动画面");
+        if(!dismissWelcome(initial,temp))return;
+      }finally{initial.recycle();}
+      if(stopRequested)return;
+      KingshotClaimMail mail=new KingshotClaimMail(matcher,
+        new KingshotClaimMail.Screen(){
+          @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(temp);}
+          @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
+        },
+        (level,module,message)->listener.onEvent(level,module,message),
+        ()->stopRequested
+      );
+      int claims=mail.run();
+      listener.onEvent("DONE","邮件奖励","执行结束；观察到领取按钮消失 "+claims+" 次；不代表邮件内容已全部领取");
+    }catch(InterruptedException e){Thread.currentThread().interrupt();}
+    catch(Exception e){failures.add("邮件奖励："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
+    finally {
+      temp.delete();running=false;
+      listener.onEvent("DONE","邮件奖励","已结束，截图 "+successes.size()+" 张，状态和证据可在 ZIP 中检查");
     }
   }
 
