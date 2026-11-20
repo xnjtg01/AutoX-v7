@@ -35,6 +35,8 @@ public class MainActivity extends Activity {
   private synchronized void record(String level,String module,String message){
     String line=stamp()+" | "+level+" | "+module+" | "+message+"\n";
     records.append(line);
+    try(FileOutputStream autoLog=new FileOutputStream(new File(getFilesDir(),"benben-events.log"),true)) { autoLog.write(line.getBytes(StandardCharsets.UTF_8)); }
+    catch(Exception ignored) { android.util.Log.w("BenBenAssistant","local event log write failed",ignored); }
     if(records.length()>30000)records.delete(0,records.length()-20000);
     runOnUiThread(()->{status.setText(module+"："+message);logView.setText(records.toString());});
     android.util.Log.i("BenBenAssistant",line);
