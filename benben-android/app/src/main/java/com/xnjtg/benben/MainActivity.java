@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.4.0";
+  private static final String VERSION = "1.5.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
     catch(Exception ignored) { android.util.Log.w("BenBenAssistant","local event log write failed",ignored); }
     if(records.length()>30000)records.delete(0,records.length()-20000);
     runOnUiThread(()->{status.setText(module+"："+message);logView.setText(records.toString());});
-    if(overlay!=null) overlay.update("奔奔助手 " + VERSION + "\\n" + level+" / "+module+"\\n"+(captureSession==null?"":("已采集 "+captureSession.frames()+" 帧")));
+    if(overlay!=null) overlay.update("奔奔助手 " + VERSION + "\n" + level+" / "+module+"\n"+(captureSession==null?"":("已采集 "+captureSession.frames()+" 帧")));
     android.util.Log.i("BenBenAssistant",line);
   }
   private Button addButton(LinearLayout parent,String label,View.OnClickListener callback){
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n已集成 Kingshot 的奖励、每日任务、联盟互助及采集／打野／训练／集结单次流程。模板匹配、异常停止、浮窗和日志均已接入；尚未完成 MuMu 游戏内全功能验收。");
+    collection.setText("\n已整合 Kingshot 七项单次执行流程及本地中文 OCR：识别城镇/野外、空闲队列、中文任务标签和欢迎弹窗。只对已确认的目标点击，遇到不明页面会跳过。仍需 MuMu 实战验证。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -125,7 +125,7 @@ public class MainActivity extends Activity {
         startActivity(permission);
         return;
       }
-      overlay.show("奔奔助手 V"+VERSION+"\\n准备开始画面采样");
+      overlay.show("奔奔助手 V"+VERSION+"\n准备开始画面采样");
       if(!captureSession.start())record("INFO","画面采样","采样正在进行，或无法创建目录");
     });
     addButton(root,"★ 一键自动巡检城镇/联盟/野外（5秒后切换游戏）",v->{
@@ -181,7 +181,7 @@ public class MainActivity extends Activity {
     }
     addButton(root,"■ 停止画面采样",v->{
       captureSession.stop();
-      overlay.update("奔奔助手 V"+VERSION+"\\n正在停止采样...");
+      overlay.update("奔奔助手 V"+VERSION+"\n正在停止采样...");
       record("INFO","画面采样","已请求停止，返回助手等待采样结束后可导出");
     });
     addButton(root,"⬇ 导出完整诊断 ZIP（日志＋游戏截图）",v->{
