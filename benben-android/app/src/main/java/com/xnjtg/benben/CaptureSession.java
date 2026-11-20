@@ -25,6 +25,7 @@ public final class CaptureSession {
   private final File root;
   private final Listener listener;
   private final ScreenshotGuard guard;
+  private final KingshotImageMatcher matcher;
   private volatile boolean running=false;
   private volatile boolean stopRequested=false;
   private volatile Thread worker;
@@ -36,7 +37,7 @@ public final class CaptureSession {
   private static final long MAX_DURATION_MS=180000L;
   private int welcomeTapCount=0;
   private long[] lastSignature=null;
-  public CaptureSession(File root,Listener listener,ScreenshotGuard guard) { this.root=root; this.listener=listener; this.guard=guard; }
+  public CaptureSession(File root,Listener listener,ScreenshotGuard guard,KingshotImageMatcher matcher) { this.root=root; this.listener=listener; this.guard=guard; this.matcher=matcher; }
   private Bitmap cleanScreenshot(File output) throws Exception {
     guard.before();
     try {return RootBridge.screenshot(output);}
@@ -164,22 +165,22 @@ public final class CaptureSession {
           listener.onEvent("FAIL","联盟互助","无法确认城镇底栏，未执行互助点击");
           return;
         }
-        if(!observation.quickHelp){
-          listener.onEvent("INFO","联盟互助","未发现可确认的绿色握手互助快捷图标，可能无帮助请求，未点击");
+        KingshotImageMatcher.Match help=matcher.find(current,"alliance/alliance-help.png",.80);
+        listener.onEvent("INFO","联盟互助","来自 Kingshot 开源素材的模板匹配："+help);
+        if(!help.found){
+          listener.onEvent("INFO","联盟互助","图标匹配未达阈值，可能没有可帮助请求；未点击");
           return;
         }
-        int x=VisualEngine.helpX(current),y=VisualEngine.helpY(current);
-        listener.onEvent("INFO","联盟互助","已匹配到握手快捷图标，执行单次点击："+x+","+y);
-        RootBridge.tap(x,y);
+        listener.onEvent("INFO","联盟互助","使用图像匹配位置执行单次点击："+help.x+","+help.y);
+        RootBridge.tap(help.x,help.y);
       }finally{current.recycle();}
       Thread.sleep(1400);
       if(stopRequested)return;
       Bitmap after=cleanScreenshot(temp);
       try {
         saveTourFrame(after,"互助点击后画面");
-        double score=VisualEngine.helpError(after);
-        if(score>=38)listener.onEvent("OK","联盟互助","点击后握手快捷图标已消失或变化；是否实际帮助成功需由游戏结果确认");
-        else listener.onEvent("INFO","联盟互助","已点击，但握手图标仍可见；未证明帮助成功，已停止避免重复点击");
+        KingshotImageMatcher.Match post=matcher.find(after,"alliance/alliance-help.png",.80);
+        listener.onEvent(post.found?"INFO":"OK","联盟互助","点击后图标匹配："+post+"；仅代表图像状态变化，无法单独证明游戏任务成功");
       }finally{after.recycle();}
     }catch(InterruptedException e){Thread.currentThread().interrupt();}
     catch(Exception e){failures.add("联盟互助："+e);listener.onEvent("FAIL","联盟互助",e.toString());}
