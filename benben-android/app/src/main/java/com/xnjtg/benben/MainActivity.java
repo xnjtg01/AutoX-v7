@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.0.0";
+  private static final String VERSION = "1.1.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -82,7 +82,7 @@ public class MainActivity extends Activity {
     captureSession=new CaptureSession(getExternalFilesDir(null),this::record,new CaptureSession.ScreenshotGuard(){
       public void before()throws Exception{overlay.beforeScreenshot();}
       public void after()throws Exception{overlay.afterScreenshot();}
-    });
+    },new KingshotImageMatcher(getAssets()));
     status=new TextView(this);status.setText("等待测试");status.setPadding(0,12,0,12);root.addView(status);
     addButton(root,"① Root 权限检测",v->task("Root 检测",()->{
       try {record("OK","Root 检测",RootBridge.checkRoot());}
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n已接入：欢迎回来确认弹窗的截图识别和验证、联盟互助快捷图标模板匹配与单次点击、错误截图、悬浮运行状态；其余游戏任务仍需适配。");
+    collection.setText("\n已接入：欢迎回来确认弹窗的截图识别和验证、Kingshot 原版联盟互助模板匹配与单次点击、错误截图、悬浮运行状态；其余游戏任务仍需适配。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
