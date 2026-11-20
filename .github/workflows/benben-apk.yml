@@ -9,6 +9,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch pinned Kingshot task image templates
+        uses: actions/checkout@v4
+        with:
+          repository: KingshotAuto/Kingshot-bot
+          ref: 3cc4c432a07dbf3aef390ae2840180589ccf3a82
+          path: kingshot-reference
+          sparse-checkout: |
+            templates/images
+            LICENSE
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Bundle MIT-licensed Kingshot templates in Android assets
+        run: |
+          mkdir -p benben-android/app/src/main/assets/kingshot
+          cp -R kingshot-reference/templates/images/. benben-android/app/src/main/assets/kingshot/
+          cp kingshot-reference/LICENSE benben-android/app/src/main/assets/kingshot/LICENSE.txt
+          echo "Source: https://github.com/KingshotAuto/Kingshot-bot" > benben-android/app/src/main/assets/kingshot/SOURCE.txt
+          echo "Pinned commit: 3cc4c432a07dbf3aef390ae2840180589ccf3a82" >> benben-android/app/src/main/assets/kingshot/SOURCE.txt
+          test "$(find benben-android/app/src/main/assets/kingshot -iname '*.png' | wc -l)" -ge 120
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -17,6 +36,17 @@ jobs:
       - name: Build independent APK
         working-directory: benben-android
         run: gradle :app:assembleDebug --no-daemon
+      - name: Validate bundled templates in APK
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          p="benben-android/app/build/outputs/apk/debug/app-debug.apk"
+          with zipfile.ZipFile(p) as z:
+              images=[n for n in z.namelist() if n.startswith("assets/kingshot/") and n.lower().endswith(".png")]
+              print("Bundled Kingshot PNG templates:",len(images))
+              assert len(images)>=120
+              assert "assets/kingshot/LICENSE.txt" in z.namelist()
+          PY
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
         with:
