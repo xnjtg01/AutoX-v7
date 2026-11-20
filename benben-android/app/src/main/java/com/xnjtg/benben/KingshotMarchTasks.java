@@ -195,28 +195,58 @@ public final class KingshotMarchTasks {
     msg(tag,"INFO","已执行狩猎出征，战斗胜负未知，保存截图供核对");
     return true;
   }
-  /** TroopTrainingTask: one idle queue, source train & minus templates. */
-  private boolean trainOne()throws Exception{
+  /** TroopTrainingTask.GetCurrentTroopStatuses + ProcessAllReadyTroops:
+   * source MenuTriggerArea=(5,522,17,52); verify side-menu only AFTER opening;
+   * source ready status areas are at 160/159/158 x 556/630/705.
+   */
+  private boolean trainOne() throws Exception {
     final String tag="训练士兵";
-    msg(tag,"START","参考 Kingshot TroopTrainingTask：只处理一个已识别空闲训练队列");
+    msg(tag,"START","以 Kingshot TroopTrainingTask 为依据检查训练队列，仅处理一类完成/空闲士兵");
     if(!ensureCity())return false;
-    if(!tap(tag,"trooptraining/side-menu.png",.78,0,180,350,900))return false;
-    if(!tap(tag,"trooptraining/idle.png",.80,60,440,320,480)){
-      msg(tag,"SKIP","没有可信的空闲队列，不会重复训练");return false;
+    if(quit())return false;
+    RootBridge.tap(14,548);
+    sleep(800);
+    if(!match(tag,"trooptraining/side-menu.png",.76,0,180,650,750).found){
+      msg(tag,"SKIP","未识别打开后的 Town/Wilderness 侧栏，停止训练");
+      return false;
     }
-    // Upstream checks train.png and minus-button.png before a final train-box click.
-    if(!tap(tag,"trooptraining/train.png",.78,120,270,570,800))return false;
-    if(!match(tag,"trooptraining/minus-button.png",.77,0,180,720,870).found){
-      msg(tag,"SKIP","没有进入训练数量界面，未提交训练");return false;
+    final int[][] status={{160,556,120,35},{159,630,130,40},{158,705,130,35}};
+    final String[] types={"步兵","骑兵","弓兵"};
+    int selected=-1;
+    KingshotImageMatcher.Match idle=null;
+    for(int i=0;i<status.length&&!quit();i++){
+      int[] rc=status[i];
+      KingshotImageMatcher.Match m=match(tag,"trooptraining/idle.png",.81,
+        rc[0]-12,rc[1]-16,rc[2]+32,rc[3]+34);
+      if(m.found){selected=i;idle=m;break;}
+    }
+    if(selected<0||idle==null){
+      msg(tag,"SKIP","三类兵营均未识别到 Idle；可能正在训练或中文服文本不同，拒绝猜测");
+      return false;
+    }
+    msg(tag,"INFO","匹配到"+types[selected]+"空闲状态，点击 "+idle.x+","+idle.y);
+    RootBridge.tap(idle.x,idle.y);
+    sleep(1000);
+    if(quit())return false;
+    KingshotImageMatcher.Match train=match(tag,"trooptraining/train.png",.79,70,225,600,820);
+    if(!train.found){
+      msg(tag,"SKIP","未找到 Train 图标，不会触发训练");
+      return false;
+    }
+    if(!tap(tag,"trooptraining/train.png",.79,70,225,600,820))return false;
+    // In the source the minus control is used as evidence of the quantity dialog.
+    if(!match(tag,"trooptraining/minus-button.png",.75,0,170,720,850).found){
+      msg(tag,"SKIP","未确认数量调节对话框，未提交训练");
+      return false;
     }
     if(quit())return false;
-    msg(tag,"INFO","已识别训练数量控件，按源项目最终训练框 (409,1078,177,58) 单次提交");
-    RootBridge.tap(497,1106);
-    sleep(1200);
-    Bitmap verify=io.screenshot();
-    try{io.save(verify,"训练-提交后画面");}
-    finally{verify.recycle();}
-    msg(tag,"INFO","训练提交点击已执行，是否开始训练需以建筑队列状态确认");
+    msg(tag,"INFO","已确认训练数量对话框；按源代码训练确认框中心(497,1107)提交一次");
+    RootBridge.tap(497,1107);
+    sleep(1150);
+    Bitmap after=io.screenshot();
+    try{io.save(after,"训练-"+types[selected]+"-提交后");}
+    finally{after.recycle();}
+    msg(tag,"INFO","训练操作已执行；是否实际开始需要核对建筑训练倒计时");
     return true;
   }
 }
