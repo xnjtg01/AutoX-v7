@@ -21,8 +21,10 @@ import java.util.zip.ZipOutputStream;
  */
 public final class CaptureSession {
   public interface Listener { void onEvent(String level,String component,String message); }
+  public interface ScreenshotGuard { void before() throws Exception; void after() throws Exception; }
   private final File root;
   private final Listener listener;
+  private final ScreenshotGuard guard;
   private volatile boolean running=false;
   private volatile boolean stopRequested=false;
   private volatile Thread worker;
@@ -34,7 +36,12 @@ public final class CaptureSession {
   private static final long MAX_DURATION_MS=180000L;
   private int welcomeTapCount=0;
   private long[] lastSignature=null;
-  public CaptureSession(File root,Listener listener) { this.root=root; this.listener=listener; }
+  public CaptureSession(File root,Listener listener,ScreenshotGuard guard) { this.root=root; this.listener=listener; this.guard=guard; }
+  private Bitmap cleanScreenshot(File output) throws Exception {
+    guard.before();
+    try {return RootBridge.screenshot(output);}
+    finally {guard.after();}
+  }
   public synchronized boolean start() {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
@@ -60,7 +67,7 @@ public final class CaptureSession {
         File temporary=new File(sessionDir,"working.png");
         File frame=new File(sessionDir,String.format(Locale.US,"frame_%03d.jpg",successes.size()+1));
         try {
-          Bitmap bmp=RootBridge.screenshot(temporary);
+          Bitmap bmp=cleanScreenshot(temporary);
           int w=bmp.getWidth(),h=bmp.getHeight();
           boolean welcome=isWelcomeBackPopup(bmp);
           long[] sig=signature(bmp);
@@ -86,7 +93,7 @@ public final class CaptureSession {
               listener.onEvent("INFO","欢迎回来弹窗","高置信度检测到弹窗，准备点击“确定”，坐标 "+tx+","+ty);
               RootBridge.tap(tx,ty);
               Thread.sleep(1250);
-              Bitmap after=RootBridge.screenshot(temporary);
+              Bitmap after=cleanScreenshot(temporary);
               boolean dismissed=!isWelcomeBackPopup(after);
               after.recycle();
               if(dismissed)listener.onEvent("OK","欢迎回来弹窗","已自动点击确定，弹窗消失");
