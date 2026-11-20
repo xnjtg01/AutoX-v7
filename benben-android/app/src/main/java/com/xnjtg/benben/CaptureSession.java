@@ -47,6 +47,11 @@ public final class CaptureSession {
   public synchronized boolean startTour() { return startMode(1); }
   public synchronized boolean startAutoHelp() { return startMode(2); }
   public synchronized boolean startRewards() { return startMode(3); }
+  public synchronized boolean startMarch(int kind) {
+    if(kind<1||kind>4)return false;
+    return startMode(3+kind);
+  }
+  public synchronized boolean startAllTasks() {return startMode(8);}
   private synchronized boolean startMode(int mode) {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
@@ -57,7 +62,14 @@ public final class CaptureSession {
     // Remove old captures so ZIP never accidentally mixes two sessions.
     File[] existing=sessionDir.listFiles();
     if(existing!=null)for(File f:existing)if(f.isFile() && f.getName().startsWith("frame_"))f.delete();
-    worker=new Thread(mode==1?this::tourLoop:(mode==2?this::autoHelpLoop:(mode==3?this::rewardLoop:this::captureLoop)),"benben-screen-sampler");
+    worker=new Thread(()->{
+      if(mode==0)captureLoop();
+      else if(mode==1)tourLoop();
+      else if(mode==2)autoHelpLoop();
+      else if(mode==3)rewardLoop();
+      else if(mode==8)allTasksLoop();
+      else marchLoop(mode-3);
+    },"benben-game-task");
     worker.start();
     return true;
   }
@@ -236,6 +248,100 @@ public final class CaptureSession {
     }
   }
 
+
+  private KingshotMarchTasks marchEngine(final File screenshotFile){
+    return new KingshotMarchTasks(matcher,new KingshotMarchTasks.IO(){
+      @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(screenshotFile);}
+      @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
+      @Override public void event(String level,String module,String message){
+        listener.onEvent(level,module,message);
+      }
+      @Override public boolean stopped(){return stopRequested;}
+    });
+  }
+  private void marchLoop(int task){
+    final String[] types={"资源采集","加入集结","打野怪","训练士兵"};
+    String title=types[Math.max(0,Math.min(3,task-1))];
+    File temp=new File(sessionDir,"march-working.png");
+    listener.onEvent("START",title,"5秒后在游戏中开始。采用 Kingshot 对应模板和状态验证，最多执行一次");
+    try{
+      for(int i=0;i<5&&!stopRequested;i++)Thread.sleep(1000);
+      if(stopRequested)return;
+      Bitmap frame=cleanScreenshot(temp);
+      try{
+        saveTourFrame(frame,title+"起始画面");
+        if(!dismissWelcome(frame,temp))return;
+      }finally{frame.recycle();}
+      if(stopRequested)return;
+      boolean ok=marchEngine(temp).run(task);
+      listener.onEvent(ok?"OK":"SKIP",title,ok?"一次任务流程已执行，结果仍需在游戏内核对":"识别不足或队列条件不满足，已停止");
+    }catch(InterruptedException e){Thread.currentThread().interrupt();}
+    catch(Exception e){failures.add(title+":"+e);listener.onEvent("FAIL",title,e.toString());}
+    finally{running=false;temp.delete();listener.onEvent("DONE",title,"已结束，截图 "+successes.size()+" 张，可导出诊断 ZIP");}
+  }
+  private void allTasksLoop() {
+    File temp=new File(sessionDir,"all-working.png");
+    listener.onEvent("START","七项巡检","5 秒后运行：奖励领取、联盟帮助、训练、集结、采集、打野；每项均有图像校验和失败保护。");
+    try{
+      for(int i=0;i<5&&!stopRequested;i++)Thread.sleep(1000);
+      if(stopRequested)return;
+      Bitmap first=cleanScreenshot(temp);
+      try{
+        saveTourFrame(first,"一键任务起始画面");
+        if(!dismissWelcome(first,temp))return;
+      }finally{first.recycle();}
+      if(stopRequested)return;
+      KingshotClaimMail.Screen screen=new KingshotClaimMail.Screen(){
+        @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(temp);}
+        @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
+      };
+      KingshotClaimMail.Stopped stopped=()->stopRequested;
+      KingshotClaimMail.Events events=(level,module,message)->listener.onEvent(level,module,message);
+      // No cross-task blind clicking. Every module starts with its own page gate.
+      try{
+        new KingshotClaimMail(matcher,screen,events,stopped).run();
+      }catch(Exception e){failures.add("邮件："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
+      if(!stopRequested){
+        try{new KingshotClaimMissions(matcher,screen,events,stopped).run();}
+        catch(Exception e){failures.add("任务："+e);listener.onEvent("FAIL","每日任务",e.toString());}
+      }
+      if(!stopRequested){
+        Bitmap pre=cleanScreenshot(temp);
+        try{
+          KingshotImageMatcher.Match help=matcher.find(pre,"alliance/alliance-help.png",.80);
+          listener.onEvent("INFO","联盟帮助","已检测："+help);
+          if(VisualEngine.city(pre)&&help.found){
+            RootBridge.tap(help.x,help.y);
+            Thread.sleep(900);
+            Bitmap after=cleanScreenshot(temp);
+            try{saveTourFrame(after,"一键任务-联盟帮助之后");}
+            finally{after.recycle();}
+            listener.onEvent("INFO","联盟帮助","已执行单次帮助点击，是否成功需看游戏状态");
+          }
+        }catch(Exception e){failures.add("互助："+e);listener.onEvent("FAIL","联盟帮助",e.toString());}
+        finally{pre.recycle();}
+      }
+      KingshotMarchTasks engine=marchEngine(temp);
+      // Source-derived one-cycle ordering: base-view operations before map-view ones.
+      int[] tasks={KingshotMarchTasks.TRAIN,KingshotMarchTasks.RALLY,
+        KingshotMarchTasks.FARM,KingshotMarchTasks.HUNT};
+      String[] names={"训练士兵","加入集结","资源采集","自动打野怪"};
+      for(int i=0;i<tasks.length&&!stopRequested;i++){
+        try{
+          boolean ok=engine.run(tasks[i]);
+          listener.onEvent(ok?"OK":"SKIP",names[i],ok?"已执行单次源代码移植操作，等待游戏结果核实":"不满足可靠识别条件，已跳过");
+        }catch(Exception e){
+          failures.add(names[i]+":"+e);
+          listener.onEvent("FAIL",names[i],e.toString());
+        }
+      }
+    }catch(InterruptedException e){Thread.currentThread().interrupt();}
+    catch(Exception e){failures.add("全量任务："+e);listener.onEvent("FAIL","一键任务",e.toString());}
+    finally{
+      running=false;temp.delete();
+      listener.onEvent("DONE","七项巡检","本轮完成，自动点击仅限匹配成功的页面；成功项需在游戏里验证。已保存 "+successes.size()+" 张截图");
+    }
+  }
   /** Known, low-risk navigation only: city -> alliance -> back -> wilderness -> back.
    * No recruitment, reward collection, resource dispatch, combat or account actions.
    */
