@@ -200,19 +200,24 @@ public final class CaptureSession {
       if(stopRequested)return;
       Bitmap city=cleanScreenshot(temporary);
       try {
-        saveTourFrame(city,"城镇基准");
-        if(!hasBottomNavigation(city)) {
-          listener.onEvent("FAIL","自动巡检","未检测到参考城镇底部菜单，安全停止，不会自动点击。请确认已进入城镇主界面。");
+        saveTourFrame(city,"进入游戏画面");
+        if(!dismissWelcome(city,temporary))return;
+      } finally {city.recycle();}
+      Bitmap cityReady=cleanScreenshot(temporary);
+      try {
+        if(!VisualEngine.city(cityReady)) {
+          saveTourFrame(cityReady,"未识别城镇");
+          listener.onEvent("FAIL","自动巡检","未识别到城镇底部菜单，安全停止。请检查当前是否有其他弹窗。");
           return;
         }
-      } finally {city.recycle();}
+      } finally {cityReady.recycle();}
       String[] names={"联盟","野外"};
       float[] xs={.732f,.913f};
       for(int i=0;i<names.length && !stopRequested;i++){
         Bitmap verify=cleanScreenshot(temporary);
         boolean valid;
         int width=verify.getWidth(),height=verify.getHeight();
-        try{ valid=hasBottomNavigation(verify); }
+        try{ valid=VisualEngine.city(verify); }
         finally{verify.recycle();}
         if(!valid){
           listener.onEvent("FAIL","自动巡检","进入"+names[i]+"前未确认城镇菜单，停止后续点击");
