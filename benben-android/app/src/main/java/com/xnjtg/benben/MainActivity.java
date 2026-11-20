@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "0.9.0";
+  private static final String VERSION = "1.0.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
       +"screen="+getResources().getDisplayMetrics().widthPixels+"x"+getResources().getDisplayMetrics().heightPixels+"\n"
       +"lastAccessibilityPackage="+BenBenAccessibilityService.lastPackage+"\n"
       +"lastAccessibilityEvent="+BenBenAccessibilityService.lastEvent+"\n"
-      +"note=本版本不上传任何日志。七项游戏任务尚未实现。\n"
+      +"note=本版本不上传日志。联盟互助快捷按钮支持单次尝试，其余六项未实现。\n"
       +"---- events ----\n"+records.toString();
   }
   private void saveReport(){
@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
     root.setOrientation(LinearLayout.VERTICAL);root.setPadding(24,16,24,30);root.setBackgroundColor(Color.rgb(247,249,252));
     scroll.addView(root);
     TextView heading=new TextView(this);heading.setText("奔奔王国助手");heading.setTextSize(24);heading.setTextColor(Color.rgb(15,43,78));root.addView(heading);
-    TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n诊断与受控页面巡检；仅点击城镇底部已确认的联盟/野外导航");sub.setTextSize(14);root.addView(sub);
+    TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n独立 APK · 截图识别 + 弹窗处理 + 联盟互助单次尝试");sub.setTextSize(14);root.addView(sub);
     overlay=new StatusOverlay(this,()->{captureSession.stop();record("INFO","画面采样","用户在浮窗中点击停止");});
     captureSession=new CaptureSession(getExternalFilesDir(null),this::record,new CaptureSession.ScreenshotGuard(){
       public void before()throws Exception{overlay.beforeScreenshot();}
@@ -115,7 +115,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n两个模式：①被动采样（你自己切换游戏页面）；②自动巡检（只进入城镇底部联盟、野外两个已知入口并截图）。浮窗在截图时自动隐藏。七项挂机任务尚未实现。");
+    collection.setText("\n已接入：欢迎回来确认弹窗的截图识别和验证、联盟互助快捷图标模板匹配与单次点击、错误截图、悬浮运行状态；其余游戏任务仍需适配。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -136,6 +136,15 @@ public class MainActivity extends Activity {
       }
       overlay.show("奔奔助手 V"+VERSION+"\n自动页面巡检准备中");
       if(!captureSession.startTour())record("INFO","自动巡检","已在运行采样，或无法创建目录");
+    });
+    addButton(root,"★ 一键执行：关闭确认弹窗＋联盟互助（单次）",v->{
+      if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
+        record("INFO","悬浮窗","请先授予浮窗权限");
+        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
+        return;
+      }
+      overlay.show("奔奔助手 V"+VERSION+"\n自动互助任务准备中");
+      if(!captureSession.startAutoHelp())record("INFO","联盟互助","已有任务运行，未重复启动");
     });
     addButton(root,"■ 停止画面采样",v->{
       captureSession.stop();
@@ -160,14 +169,25 @@ public class MainActivity extends Activity {
     tasksLabel.setText("\n七项任务：点击逐项检查当前实现状态（未完成任务不会执行）。");
     root.addView(tasksLabel);
     for(String name:TASKS){
-      addButton(root,"测试 · "+name,v->record("NOT_IMPLEMENTED",name,
-        "未实现游戏画面状态机、操作验证及完成条件；未执行游戏操作"));
+      if("联盟帮助".equals(name)){
+        addButton(root,"测试 · 联盟帮助（单次实测）",v->{
+          if(Build.VERSION.SDK_INT>=23&&!Settings.canDrawOverlays(this)){
+            startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
+            return;
+          }
+          overlay.show("奔奔助手 V"+VERSION+"\n互助任务");
+          if(!captureSession.startAutoHelp())record("INFO","联盟互助","当前任务还在运行");
+        });
+      } else {
+        addButton(root,"尚未支持 · "+name,v->record("NOT_IMPLEMENTED",name,
+          "需要额外的游戏任务页面素材与状态机，本 APK 不会对未知界面进行猜测点击"));
+      }
     }
     addButton(root,"⑥ 一键运行全部安全诊断",v->task("全量诊断",()->{
       try{record("OK","全量诊断/Root",RootBridge.checkRoot());}
       catch(Exception e){record("FAIL","全量诊断/Root",e.toString());}
       record("INFO","全量诊断/无障碍",BenBenAccessibilityService.lastPackage);
-      for(String name:TASKS)record("NOT_IMPLEMENTED",name,"暂不执行游戏操作");
+      for(String name:TASKS)record("联盟帮助".equals(name)?"AVAILABLE_SINGLE_TAP":"NOT_IMPLEMENTED",name,"联盟帮助仅支持单次手势模板匹配，其他任务尚未接入");
       record("OK","全量诊断","基础诊断结束；截图需要使用单独的 5 秒倒计时入口");
     }));
     addButton(root,"⑦ 复制完整错误报告",v->{
