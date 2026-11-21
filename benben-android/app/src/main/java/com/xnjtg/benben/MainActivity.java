@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.9.0";
+  private static final String VERSION = "2.0.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\nV1.9：七项任务分别测试。训练或集结失败时自动记录并继续下一个场景；先确认返回城镇，无法恢复则仅跳过当前项，避免盲点。诊断 ZIP 含完整逐项结果。");
+    collection.setText("\nV2.0：按实际测试修复城镇/野外切换白云动画误判；自动等待画面加载，避免在过场时返回城镇。保留七项独立测试、跳过失败场景及诊断 ZIP。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
