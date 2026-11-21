@@ -467,7 +467,7 @@ public final class CaptureSession {
     }finally {
       try{
         File statusFile=new File(sessionDir,"batch-outcomes.txt");
-        StringBuilder output=new StringBuilder("联合任务 V2.3 结果\n");
+        StringBuilder output=new StringBuilder("联合任务 V2.5 结果\n");
         output.append(summary.overview()).append("\n");
         for(String item:summary.outcomes)output.append(item).append("\n");
         try(FileOutputStream out=new FileOutputStream(statusFile)){
