@@ -8,7 +8,7 @@ import android.graphics.Color;
  * 720x1280 diagnostic captures. Never navigates without checking a page first.
  */
 public final class DomesticScreenNavigation {
-  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, UNKNOWN }
+  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, TRANSITION, UNKNOWN }
   public interface IO {
     Bitmap screenshot()throws Exception;
     void save(Bitmap bitmap,String label)throws Exception;
@@ -78,7 +78,23 @@ public final class DomesticScreenNavigation {
     return r>=218&&r<=255&&g>=207&&g<=249&&blue>=175&&blue<=235
       && r>g&&g>blue;
   }
+  /** User's V1.9 frames 025-026 show a pale blue/white cloud during map
+   * switching. This is an animation, NOT an unknown interactive page.
+   * Never send Back or tap another button while a transition is visible.
+   */
+  public boolean mapTransition(Bitmap b){
+    float[][] samples={{.15f,.20f},{.5f,.20f},{.85f,.22f},{.22f,.48f},
+      {.5f,.55f},{.78f,.62f},{.25f,.82f},{.72f,.87f}};
+    int cloud=0;
+    for(float[] point:samples){
+      int c=sample(b,point[0],point[1]);
+      int r=Color.red(c),g=Color.green(c),blue=Color.blue(c);
+      if(r>=204 && g>=211 && blue>=211 && blue>=g-11 && g>=r-14)cloud++;
+    }
+    return cloud>=7;
+  }
   public Page detect(Bitmap b) {
+    if(mapTransition(b))return Page.TRANSITION;
     if(VisualEngine.welcome(b))return Page.WELCOME;
     if(missionPanel(b))return Page.MISSIONS;
     if(mailPanel(b))return Page.MAIL;
@@ -121,6 +137,11 @@ public final class DomesticScreenNavigation {
         io.event("WARN","页面识别","底栏识别异常："+e.getMessage());
       }
     }
+    // The city footer is stable even when the camera is over an empty grassy
+    // area. V1.9 frame 027 has no recognizable buildings, but has the same
+    // six brown footer anchors as frame 017 and clearly shows the "野外" tab.
+    // City marker recognition must not depend on buildings being present.
+    if(VisualEngine.city(b))return Page.CITY;
     return Page.UNKNOWN;
   }
   public Page current()throws Exception {
@@ -136,14 +157,25 @@ public final class DomesticScreenNavigation {
     RootBridge.tap(x,y);
   }
   public boolean restoreCity()throws Exception{
-    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0;
-    for(int attempts=0;attempts<8&&!io.stopped();attempts++) {
+    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0, transitionWaits=0;
+    for(int attempts=0;attempts<16&&!io.stopped();attempts++) {
       Bitmap b=io.screenshot();
       Page page;
       try {
         page=detect(b);
-        note("INFO","当前页面="+page+"，恢复检查="+(attempts+1)+"/8");
+        note("INFO","当前页面="+page+"，恢复检查="+(attempts+1)+"/16");
         if(page==Page.CITY)return true;
+        if(page==Page.TRANSITION){
+          transitionWaits++;
+          if(transitionWaits>10){
+            io.save(b,"恢复失败-地图加载动画超时");
+            note("FAIL","地图切换动画持续超过10轮，放弃当前场景，不会盲点");
+            return false;
+          }
+          note("INFO","正在切换城镇/野外，检测到白云动画，等待界面稳定 (第"+transitionWaits+"/10次)");
+          continue;
+        }
+        transitionWaits=0;
         if(page==Page.MISSIONS){
           if(missionCloses>=2){
             io.save(b,"失败-每日任务关闭两次未成功");
