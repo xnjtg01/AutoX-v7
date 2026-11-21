@@ -140,12 +140,75 @@ public final class KingshotMarchTasks {
       msg(tag,"SKIP","未能通过横向列表定位并搜索 "+resourceType+"，不会继续出征");
       return false;
     }
-    // Keep the original Kingshot flow for the post-search stage, but never
-    // invoke gather/deploy if the expected user-action button is not confirmed.
-    if(!tap(tag,"farming/gather-button.png",.76,257,592,207,72)){
-      msg(tag,"SKIP","已搜索到 "+resourceType+"，但未匹配到地图上的“采集”按钮；已截图，跳过派兵");
-      return false;
-    }
+    // The actual domestic screen (V2.2 frame_027) is an 8级空闲采石场
+    // DETAILS panel, with a Chinese cyan "采集" action around (360,630)
+    // at 720x1280. It is not the international farming/gather-button.png.
+    Bitmap detail=io.screenshot();
+    int collectX=-1,collectY=-1;
+    try{
+      io.save(detail,"采集-搜索后资源详情");
+      DomesticScreenNavigation.Page page=navigation.detect(detail);
+      if(page!=DomesticScreenNavigation.Page.RESOURCE_DETAIL){
+        msg(tag,"SKIP","搜索后没有识别到采集资源详情页，当前="+page+"；不点击未知按钮");
+        return false;
+      }
+      String text="";
+      try {
+        ChineseOcr.Result result=ocr.read(detail);
+        text=ChineseOcr.compact(result.allText);
+        boolean correctResource=text.contains(resourceType) ||
+          ("石材".equals(resourceType)&&text.contains("采石场")) ||
+          ("木材".equals(resourceType)&&text.contains("伐木场")) ||
+          ("面包".equals(resourceType)&&(text.contains("农田")||text.contains("麦田"))) ||
+          ("铁矿".equals(resourceType)&&text.contains("铁矿场"));
+        msg(tag,"INFO","搜索结果 OCR="+text+"；匹配类别="+correctResource);
+        if(!correctResource){
+          msg(tag,"SKIP","采集详情资源种类未匹配设定的 "+resourceType+"，拒绝错误派兵");
+          return false;
+        }
+        for(ChineseOcr.Item item:result.lines){
+          if(item.box==null)continue;
+          String label=ChineseOcr.compact(item.text);
+          int x=item.box.centerX(),y=item.box.centerY();
+          if(label.equals("采集") &&
+             x>detail.getWidth()*.30 && x<detail.getWidth()*.70 &&
+             y>detail.getHeight()*.43 && y<detail.getHeight()*.56){
+            collectX=x;collectY=y;break;
+          }
+        }
+      }catch(Exception e){
+        msg(tag,"WARN","资源详情中文 OCR 读取异常："+e.getMessage());
+      }
+      if(collectX<0){
+        // Known visual fallback only within a confirmed resource detail page.
+        // Sample from the teal interior of the button, not the white text.
+        int p=detail.getPixel(Math.round(detail.getWidth()*.43f),
+          Math.round(detail.getHeight()*.49f));
+        int r=android.graphics.Color.red(p),g=android.graphics.Color.green(p),
+          b=android.graphics.Color.blue(p);
+        if(g>=140&&b>=140&&g>r+50&&b>r+50){
+          collectX=Math.round(detail.getWidth()*.50f);
+          collectY=Math.round(detail.getHeight()*.493f);
+          msg(tag,"INFO","中文按钮分词不完整，已依据资源详情页内的青色按钮位置确认采集");
+        }
+      }
+      if(collectX<0){
+        msg(tag,"SKIP","已找到资源详情，但未能可靠识别青色采集按钮");
+        return false;
+      }
+    }finally{detail.recycle();}
+    if(quit())return false;
+    msg(tag,"INFO","国内服采集详情已确认，点击「采集」("+collectX+","+collectY+")");
+    RootBridge.tap(collectX,collectY);
+    sleep(1200);
+    Bitmap march=io.screenshot();
+    try{
+      io.save(march,"采集-点击采集后出征界面");
+      if(navigation.detect(march)==DomesticScreenNavigation.Page.RESOURCE_DETAIL){
+        msg(tag,"SKIP","点击后仍是资源详情页，未证明进入出征画面，停止派兵");
+        return false;
+      }
+    }finally{march.recycle();}
     if(quit())return false;
     if(match(tag,"farming/no-troops.png",.72,0,180,720,1050).found){
       msg(tag,"SKIP","没有可出征士兵，不会派遣");
