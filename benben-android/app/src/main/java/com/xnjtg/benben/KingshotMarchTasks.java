@@ -84,13 +84,26 @@ public final class KingshotMarchTasks {
     if(quit())return false;
     msg("定位","INFO","点击城镇右下角「野外」(658,1230)，等待地图状态");
     RootBridge.tap(658,1230);
-    sleep(1300);
-    page=navigation.current();
-    if(page==DomesticScreenNavigation.Page.MAP) {
-      msg("定位","OK","已验证进入野外地图");
-      return true;
+    // Domestic game uses a ~5-10 second white cloud transition when switching
+    // world/city; V1.9 sampled frames 025-026 during this transition and
+    // incorrectly marked both gathering and hunting as failed.
+    for(int attempt=1;attempt<=10&&!quit();attempt++){
+      sleep(1300);
+      page=navigation.current();
+      msg("定位","INFO","野外切换状态检查 "+attempt+"/10: "+page);
+      if(page==DomesticScreenNavigation.Page.MAP) {
+        msg("定位","OK","已验证进入野外地图，不再返回城镇");
+        return true;
+      }
+      if(page==DomesticScreenNavigation.Page.TRANSITION ||
+         page==DomesticScreenNavigation.Page.UNKNOWN ||
+         (page==DomesticScreenNavigation.Page.CITY && attempt<=3)){
+        // No taps during animation; allow the rendered game UI to settle.
+        continue;
+      }
+      break;
     }
-    msg("定位","SKIP","跳转后页面="+page+"，未确认地图，不会开始出征");
+    msg("定位","SKIP","野外切换后仍无法确认地图，最终状态="+page+"；不点击搜索或出征");
     return false;
   }
   private boolean ensureCity()throws Exception{
