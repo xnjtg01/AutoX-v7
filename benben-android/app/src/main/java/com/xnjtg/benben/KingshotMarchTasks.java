@@ -159,40 +159,93 @@ public final class KingshotMarchTasks {
     msg(tag,"INFO","已尝试派遣一支队伍采集 "+resourceType+"，是否成功需验证游戏行军队列");
     return true;
   }
-  /** AutoRallyTask.TryJoinRallyAsync - at most one join, no auto repeat. */
-  private boolean joinRally()throws Exception {
+  /** Search dynamic red beast shortcut on both city/world screens.
+   * If no rally request exists, the icon is ABSENT; this is normal, not a
+   * failure. Its timer/number badge and screen location are variable.
+   * Fall back to original alliance-war list only after checking both views.
+   */
+  private boolean joinRally()throws Exception{
     final String tag="加入集结";
-    msg(tag,"START","参考 Kingshot AutoRallyTask：仅加入一次，不开启自动集结常驻开关");
-    if(!ensureCity())return false;
-    boolean opened=tap(tag,"Auto Rally/rally-icon.png",.75,570,445,150,190);
-    if(!opened){
-      // Upstream fallback: open alliance and then war if direct rally icon is missing.
+    msg(tag,"START","先动态寻找红色野兽集结快捷入口；不存在则检查联盟战争列表");
+    boolean opened=false;
+    boolean shortcutTapped=false;
+    DomesticScreenNavigation.Page page=navigation.current();
+    if(page!=DomesticScreenNavigation.Page.CITY&&
+       page!=DomesticScreenNavigation.Page.MAP) {
+      if(!ensureCity())return false;
+      page=DomesticScreenNavigation.Page.CITY;
+    }
+    Bitmap first=io.screenshot();
+    try{
+      KingshotImageMatcher.Match red=DomesticRallyShortcut.find(first);
+      msg(tag,"INFO","动态红色野兽集结："+red);
+      if(red.found){
+        io.save(first,"集结-找到红色野兽快捷入口");
+        if(quit())return false;
+        RootBridge.tap(red.x,red.y);
+        opened=true;shortcutTapped=true;
+        sleep(1300);
+      }
+    }finally{first.recycle();}
+    // Domestic shortcut appears on the world map, too. Check there even if
+    // city currently shows no icon; never press a guessed event location.
+    if(!opened&&page==DomesticScreenNavigation.Page.CITY && !quit()){
+      if(ensureMap()){
+        Bitmap world=io.screenshot();
+        try{
+          KingshotImageMatcher.Match red=DomesticRallyShortcut.find(world);
+          msg(tag,"INFO","野外地图动态集结入口："+red);
+          if(red.found){
+            io.save(world,"集结-野外找到红色野兽快捷入口");
+            if(quit())return false;
+            RootBridge.tap(red.x,red.y);
+            opened=true;shortcutTapped=true;
+            sleep(1300);
+          }else msg(tag,"SKIP","野外未发现红色集结通知，说明可能没有人发起；此项不算异常");
+        }finally{world.recycle();}
+      }
+    }
+    if(opened){
+      Bitmap openedView=io.screenshot();
+      try{
+        io.save(openedView,"集结-点击红色快捷入口后");
+        KingshotImageMatcher.Match menu=matcher.findInReferenceArea(openedView,
+          "Auto Rally/rally-menu.png",.72,0,0,720,1280);
+        if(!menu.found){
+          msg(tag,"SKIP","红色入口已点击，但还未确认进入集结列表；保存画面，不尝试未知按钮");
+          return false;
+        }
+        msg(tag,"INFO","红色入口已打开集结列表："+menu);
+      }finally{openedView.recycle();}
+    }else{
+      if(!ensureCity())return false;
+      // Original Kingshot fallback: Alliance > War. It allows us to detect
+      // currently joinable rallies even without the transient shortcut.
       if(!tap(tag,"Auto Rally/alliance-icon.png",.77,0,1020,720,260))return false;
       if(!tap(tag,"Auto Rally/war-icon.png",.77,0,60,720,1130))return false;
-    }
-    if(!match(tag,"Auto Rally/rally-menu.png",.72,0,0,720,1280).found){
-      msg(tag,"SKIP","集结列表界面未被识别，不会乱点加号");
-      return false;
-    }
-    if(!tap(tag,"Auto Rally/green-plus.png",.80,572,164,146,1110)){
-      msg(tag,"INFO","当前没有匹配到可加入的集结");
-      return false;
+      if(!match(tag,"Auto Rally/rally-menu.png",.72,0,0,720,1280).found){
+        msg(tag,"SKIP","没有确认联盟战争列表，不会乱点加号");
+        return false;
+      }
     }
     if(quit())return false;
+    if(!tap(tag,"Auto Rally/green-plus.png",.80,572,164,146,1110)){
+      msg(tag,"SKIP","当前集结列表没有可确认的加入按钮，属于正常无集结情况");
+      return false;
+    }
     if(match(tag,"Auto Rally/max-march.png",.75,0,0,720,1280).found){
-      msg(tag,"SKIP","已达最大行军数量");
+      msg(tag,"SKIP","行军队列已满，停止派兵");
       return false;
     }
     if(!tap(tag,"Auto Rally/equalize.png",.77,0,0,720,1280))return false;
     if(!tap(tag,"Auto Rally/deploy.png",.81,330,1020,390,260))return false;
     if(quit())return false;
     if(match(tag,"Auto Rally/confirm-join.png",.75,0,0,720,1280).found){
-      msg(tag,"WARN","发现集结确认或错误弹窗，停止，不盲点确认");
+      msg(tag,"WARN","出现未确认的集结弹窗，停止盲目点击");
       return false;
     }
-    boolean list=match(tag,"Auto Rally/rally-menu.png",.72,0,0,720,1280).found;
-    msg(tag,list?"OK":"WARN",list?"返回集结列表，疑似加入成功":"未确认返回集结列表，不能认定成功");
-    return list;
+    msg(tag,"INFO","已尝试一次加入集结；是否成功需以实际队列变化判断");
+    return true;
   }
   /** AutoHuntCoordinator: enter hunt mode and attack a matched bear target. */
   private boolean huntOne()throws Exception {
