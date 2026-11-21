@@ -8,7 +8,7 @@ import android.graphics.Color;
  * 720x1280 diagnostic captures. Never navigates without checking a page first.
  */
 public final class DomesticScreenNavigation {
-  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, RESOURCE_DETAIL, RESOURCE_SEARCH, TRANSITION, UNKNOWN }
+  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, MARCH_SETUP, RESOURCE_DETAIL, RESOURCE_SEARCH, TRANSITION, UNKNOWN }
   public interface IO {
     Bitmap screenshot()throws Exception;
     void save(Bitmap bitmap,String label)throws Exception;
@@ -129,6 +129,11 @@ public final class DomesticScreenNavigation {
     try {
       ChineseOcr.Result scanned=ocr.read(b);
       String all=ChineseOcr.compact(scanned.allText);
+      // Chinese troop dispatch page observed in V2.4 frame_028.
+      if(all.contains("出征") &&
+        (all.contains("王牌步兵")||all.contains("王牌骑兵")||all.contains("王牌弓兵")) &&
+        (all.contains("石材")||all.contains("木材")||all.contains("面包")||all.contains("铁矿")))
+        return Page.MARCH_SETUP;
       if(all.contains("欢迎回来") && (all.contains("离线")||all.contains("收益")))return Page.WELCOME;
       if(all.contains("获得奖励") && (all.contains("点击任意")||all.contains("退出")))return Page.REWARD;
       if(all.contains("成长任务")&&(all.contains("主线任务")||all.contains("每日任务")))return Page.MISSIONS;
@@ -182,7 +187,7 @@ public final class DomesticScreenNavigation {
     RootBridge.tap(x,y);
   }
   public boolean restoreCity()throws Exception{
-    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0, transitionWaits=0, resourceDetailBacks=0, resourcePanelBacks=0;
+    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0, transitionWaits=0, resourceDetailBacks=0, resourcePanelBacks=0, marchSetupBacks=0;
     for(int attempts=0;attempts<16&&!io.stopped();attempts++) {
       Bitmap b=io.screenshot();
       Page page;
@@ -235,6 +240,16 @@ public final class DomesticScreenNavigation {
           allianceBacks++;
           note("INFO","已点击"+(page==Page.ALLIANCE_WAR?"联盟战争":"联盟主页")
             +"左上角返回，次数="+allianceBacks);
+        }else if(page==Page.MARCH_SETUP){
+          if(marchSetupBacks>=2){
+            io.save(b,"恢复失败-出征页无法退出");
+            note("FAIL","出征配置页已返回两次仍未退出，停止后续未知页面点击");
+            return false;
+          }
+          io.save(b,"恢复-出征配置页面");
+          // A backward navigation cancels the form without sending a march.
+          RootBridge.back();marchSetupBacks++;
+          note("INFO","识别到国内服兵力配置/出征页面，安全返回，不点击出征");
         }else if(page==Page.RESOURCE_DETAIL || page==Page.RESOURCE_SEARCH){
           if(page==Page.RESOURCE_DETAIL){
             if(resourceDetailBacks>=2){
