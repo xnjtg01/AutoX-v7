@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.8.0";
+  private static final String VERSION = "1.9.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\nV1.8：根据实际诊断截图，识别联盟主页/联盟战争页面，逐级点左上角返回城镇；采集和打野不再被联盟页面误判挡住。保留邮件、任务、弹窗和浮窗修复。");
+    collection.setText("\nV1.9：七项任务分别测试。训练或集结失败时自动记录并继续下一个场景；先确认返回城镇，无法恢复则仅跳过当前项，避免盲点。诊断 ZIP 含完整逐项结果。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -162,7 +162,7 @@ public class MainActivity extends Activity {
       overlay.show("奔奔助手 V"+VERSION+"\n邮件奖励任务准备中");
       if(!captureSession.startRewards())record("INFO","邮件奖励","已有任务运行");
     });
-    addButton(root,"▶ 一键运行全部七项（匹配到才执行，失败自动跳过）",v->{
+    addButton(root,"▶ 一键测试全部七项（单项失败继续下一项）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
         startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));
         return;
