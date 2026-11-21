@@ -104,6 +104,15 @@ public class MainActivity extends Activity {
       android.R.layout.simple_spinner_item,DomesticResourcePicker.RESOURCES);
     resourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
     resourceSpinner.setAdapter(resourceAdapter);
+    // Cloud test found this resource chooser was never added to the layout!
+    // Give it an explicit visible size and an accessibility label as well.
+    int spinnerHeight=Math.round(52*getResources().getDisplayMetrics().density);
+    LinearLayout.LayoutParams resourceSpinnerLayout=new LinearLayout.LayoutParams(
+      android.view.ViewGroup.LayoutParams.MATCH_PARENT,spinnerHeight);
+    resourceSpinnerLayout.setMargins(0,8,0,12);
+    resourceSpinner.setMinimumHeight(spinnerHeight);
+    resourceSpinner.setContentDescription("采集资源类型");
+    root.addView(resourceSpinner,resourceSpinnerLayout);
     String savedResource=getSharedPreferences("benben-config",MODE_PRIVATE)
       .getString("gatherResource","石材");
     int select=0;
