@@ -128,11 +128,10 @@ jobs:
           emulator-boot-timeout: 600
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: benben-android
           script: |
-            cd benben-android
             gradle :app:connectedDebugAndroidTest --no-daemon
-            cd ..
-            bash .github/scripts/benben-cloud-smoke.sh cloud-artifacts/app-debug.apk
+            bash ../.github/scripts/benben-cloud-smoke.sh ../cloud-artifacts/app-debug.apk
       - name: Save emulator screenshots, UI hierarchy and Android test results
         if: always()
         uses: actions/upload-artifact@v4
