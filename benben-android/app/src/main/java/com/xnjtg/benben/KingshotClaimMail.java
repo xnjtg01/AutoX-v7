@@ -86,6 +86,7 @@ public final class KingshotClaimMail {
       if(!stopped.isStopped()){
         boolean restored=navigation.restoreCity();
         note(restored?"OK":"FAIL",restored?"领取流程已返回城镇":"邮件后未能恢复城镇");
+        if(!restored)throw new IllegalStateException("邮件奖励操作结束，但未能退出结算画面或恢复城镇；本任务不得记为已通过");
       }
     }
   }
