@@ -93,6 +93,22 @@ public final class DomesticScreenNavigation {
     }
     return cloud>=7;
   }
+  /** Distinguish the turquoise bottom-right "野外" city shortcut from the
+   * world map's castle shortcut. Both modes may share a beige toolbar.
+   * Calibrated against V1.9 frames 017 and 027: turquoise pixel share ~0.26.
+   */
+  private boolean cityWorldShortcut(Bitmap b){
+    int turquoise=0,total=0;
+    for(int xi=0;xi<12;xi++)for(int yi=0;yi<7;yi++){
+      float x=.82f+(xi+.5f)*.17f/12f;
+      float y=.94f+(yi+.5f)*.047f/7f;
+      int c=sample(b,x,y);
+      total++;
+      if(Color.green(c)>Color.red(c)+18 &&
+        Color.blue(c)>Color.red(c)+7)turquoise++;
+    }
+    return turquoise>=17;
+  }
   public Page detect(Bitmap b) {
     if(mapTransition(b))return Page.TRANSITION;
     if(VisualEngine.welcome(b))return Page.WELCOME;
@@ -141,7 +157,7 @@ public final class DomesticScreenNavigation {
     // area. V1.9 frame 027 has no recognizable buildings, but has the same
     // six brown footer anchors as frame 017 and clearly shows the "野外" tab.
     // City marker recognition must not depend on buildings being present.
-    if(VisualEngine.city(b))return Page.CITY;
+    if(VisualEngine.city(b) && cityWorldShortcut(b))return Page.CITY;
     return Page.UNKNOWN;
   }
   public Page current()throws Exception {
@@ -173,6 +189,7 @@ public final class DomesticScreenNavigation {
             return false;
           }
           note("INFO","正在切换城镇/野外，检测到白云动画，等待界面稳定 (第"+transitionWaits+"/10次)");
+          Thread.sleep(1150);
           continue;
         }
         transitionWaits=0;
