@@ -91,3 +91,56 @@ jobs:
         run: |
           ./.github/scripts/benben-mumu-e2e.ps1 -ApkPath "${{ runner.temp }}/benben-apk/app-debug.apk"
       # No user screenshots, game chat, or account IDs are uploaded.
+
+  cloud-android:
+    # GitHub-hosted Android, no user's Windows/MuMu or game credentials.
+    # This job tests the assistant + synthetic domestic scenes, NOT real game.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: BenBen-Assistant-preview-APK
+          path: cloud-artifacts
+      - name: Enable KVM hardware acceleration for Ubuntu Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android 12 cloud emulator, run scene tests and installed-app smoke
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 32
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            cd benben-android
+            gradle :app:connectedDebugAndroidTest --no-daemon
+            cd ..
+            bash .github/scripts/benben-cloud-smoke.sh cloud-artifacts/app-debug.apk
+      - name: Save emulator screenshots, UI hierarchy and Android test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BenBen-Cloud-Android-QA
+          path: |
+            cloud-android-report/
+            benben-android/app/build/outputs/androidTest-results/
+            benben-android/app/build/reports/androidTests/
+          if-no-files-found: ignore
+          retention-days: 7
