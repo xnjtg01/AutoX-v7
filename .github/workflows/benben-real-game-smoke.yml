@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           mkdir -p smoke-artifacts
           python3 -m pip install --quiet gdown
-          python3 -m gdown --id "${DRIVE_ID:-1fpa4cvuLPr7QaqxU9BDDVFCrv530cQ5W}" --output "$APK_PATH"
+          python3 -m gdown "https://drive.google.com/uc?id=${DRIVE_ID:-1fpa4cvuLPr7QaqxU9BDDVFCrv530cQ5W}" --output "$APK_PATH"
           FILESIZE=$(stat -c%s "$APK_PATH")
           echo "APK bytes: $FILESIZE" | tee smoke-artifacts/apk-size.txt
           test "$FILESIZE" -gt 1000000 || { echo "::error::APK download unexpectedly small"; exit 1; }
