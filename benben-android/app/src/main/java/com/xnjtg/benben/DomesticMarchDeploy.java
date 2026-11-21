@@ -67,11 +67,15 @@ public final class DomesticMarchDeploy {
     if(image==null)throw new IllegalArgumentException("No image");
     ChineseOcr.Result recognized=ocr.read(image);
     String text=ChineseOcr.compact(recognized.allText);
-    if(!resourceMatches(text,resource))
-      return new Target(false,0,0,"出征界面顶部未识别到目标资源 "+resource);
+    int w=image.getWidth(),h=image.getHeight();
+    String title=ChineseOcr.compact(recognized.inArea(0,0,(int)(w*.72f),(int)(h*.12f)));
+    if(!resourceMatches(title,resource))
+      return new Target(false,0,0,"出征页标题不是 "+resource+"，识别为："+title);
     boolean troopLabel=text.contains("步兵")||text.contains("骑兵")||text.contains("弓兵");
-    if(!troopLabel||!hasPositiveTroopCount(text))
-      return new Target(false,0,0,"没有确认兵种和正数出征士兵数量");
+    String topTroops=ChineseOcr.compact(recognized.inArea(0,(int)(h*.105f),
+      (int)(w*.70f),(int)(h*.11f)));
+    if(!troopLabel||!hasPositiveTroopCount(topTroops))
+      return new Target(false,0,0,"没有确认顶部出征人数为正数："+topTroops);
     if(!cyan(image))
       return new Target(false,0,0,"底部出征按钮颜色不符，不能猜测位置");
     for(ChineseOcr.Item line:recognized.lines){
