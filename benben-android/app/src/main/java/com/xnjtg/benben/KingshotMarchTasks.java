@@ -21,8 +21,10 @@ public final class KingshotMarchTasks {
   private final IO io;
   private final ChineseOcr ocr;
   private final DomesticScreenNavigation navigation;
-  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io,ChineseOcr ocr){
+  private final String resourceType;
+  public KingshotMarchTasks(KingshotImageMatcher matcher,IO io,ChineseOcr ocr,String resourceType){
     this.matcher=matcher;this.io=io;this.ocr=ocr;
+    this.resourceType=resourceType==null?"石材":resourceType;
     this.navigation=new DomesticScreenNavigation(new DomesticScreenNavigation.IO(){
       public Bitmap screenshot()throws Exception{return io.screenshot();}
       public void save(Bitmap b,String label)throws Exception{io.save(b,label);}
@@ -112,27 +114,40 @@ public final class KingshotMarchTasks {
     return ok;
   }
   public boolean run(int mode)throws Exception{
-    if(mode==FARM)return farmStone();
+    if(mode==FARM)return gatherDomesticResource();
     if(mode==RALLY)return joinRally();
     if(mode==HUNT)return huntOne();
     if(mode==TRAIN)return trainOne();
     throw new IllegalArgumentException("未知任务 "+mode);
   }
-  /** FarmingTask.ProcessSingleMarchAsync - stone, one march, default current level. */
-  private boolean farmStone()throws Exception{
+  /**
+   * FarmingTask adaptation for the user's Chinese domestic-server carousel.
+   * The original "最强奔奔" APK already exposes 4 resource settings in script.uip:
+   * 面包, 木材, 石材, 铁矿. The category strip must be swiped horizontally.
+   */
+  private boolean gatherDomesticResource()throws Exception{
     final String tag="资源采集";
-    msg(tag,"START","参考 Kingshot FarmingTask：石头资源，最多派遣一支队伍");
+    msg(tag,"START","国内服资源类别="+resourceType+"；搜索面板横向滑动＋中文 OCR，最多派遣一支队伍");
     if(!ensureMap())return false;
     if(!tap(tag,"farming/search-icon.png",.76,8,790,115,180))return false;
-    if(!tap(tag,"farming/stone.png",.76,0,835,720,225))return false;
-    // The upstream search button is a coordinate-based action only after resource selection.
+    DomesticResourcePicker picker=new DomesticResourcePicker(ocr,new DomesticResourcePicker.IO(){
+      @Override public Bitmap screenshot()throws Exception{return io.screenshot();}
+      @Override public void save(Bitmap bitmap,String label)throws Exception{io.save(bitmap,label);}
+      @Override public void event(String level,String label,String detail){io.event(level,label,detail);}
+      @Override public boolean stopped(){return quit();}
+    });
+    if(!picker.selectAndSearch(resourceType)) {
+      msg(tag,"SKIP","未能通过横向列表定位并搜索 "+resourceType+"，不会继续出征");
+      return false;
+    }
+    // Keep the original Kingshot flow for the post-search stage, but never
+    // invoke gather/deploy if the expected user-action button is not confirmed.
+    if(!tap(tag,"farming/gather-button.png",.76,257,592,207,72)){
+      msg(tag,"SKIP","已搜索到 "+resourceType+"，但未匹配到地图上的“采集”按钮；已截图，跳过派兵");
+      return false;
+    }
     if(quit())return false;
-    msg(tag,"INFO","已选择石头。点击源码搜索区域(117,1166,414,102)");
-    RootBridge.tap(324,1217);
-    sleep(1400);
-    if(!tap(tag,"farming/gather-button.png",.76,257,592,207,72))return false;
-    if(quit())return false;
-    if(match(tag,"farming/no-troops.png",.72,0,180,720,1050).found) {
+    if(match(tag,"farming/no-troops.png",.72,0,180,720,1050).found){
       msg(tag,"SKIP","没有可出征士兵，不会派遣");
       return false;
     }
@@ -141,7 +156,7 @@ public final class KingshotMarchTasks {
       return false;
     }
     if(!tap(tag,"farming/deploy-button.png",.79,388,1159,315,107))return false;
-    msg(tag,"OK","已经执行单次出征操作（必须以实际队列状态确认派遣结果）");
+    msg(tag,"INFO","已尝试派遣一支队伍采集 "+resourceType+"，是否成功需验证游戏行军队列");
     return true;
   }
   /** AutoRallyTask.TryJoinRallyAsync - at most one join, no auto repeat. */
