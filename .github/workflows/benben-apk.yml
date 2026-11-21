@@ -37,9 +37,21 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build independent APK
+      - name: Run offline regression tests then build APK
         working-directory: benben-android
-        run: gradle :app:assembleDebug --no-daemon
+        run: |
+          gradle :app:testDebugUnitTest :app:assembleDebug --no-daemon
+          if grep -n "tap(b,360,960)" app/src/main/java/com/xnjtg/benben/DomesticScreenNavigation.java; then
+            echo "V2.3 blocked regression returned: wrong reward grid tap"
+            exit 1
+          fi
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: BenBen-offline-regression-results
+          path: benben-android/app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
       - name: Validate bundled templates in APK
         run: |
           python3 - <<'PY'
