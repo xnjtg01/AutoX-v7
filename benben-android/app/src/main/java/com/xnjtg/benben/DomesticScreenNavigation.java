@@ -270,13 +270,41 @@ public final class DomesticScreenNavigation {
           welcomeClicks++;
           note("INFO","已点击欢迎回来绿色确定，随后会重新截图验证");
         }else if(page==Page.REWARD){
-          if(rewardCloses>=2){note("FAIL","奖励结算画面两次仍未关闭");return false;}
-          io.save(b,"恢复-获得奖励弹窗");
-          // User's OCR output: 获得奖励 / 点击任意位置退出.
-          // Tap a blank part of overlay only while this specific page is detected.
-          tap(b,360,960);
+          // V2.3 regression: clicking (360,960) hit the MIDDLE of the reward
+          // grid, not the bottom "点击任意位置退出" instruction. V2.3 stayed
+          // on this same screenshot for >10 taps, blocking the other 6 tasks.
+          // Autopilot's Kingshot reference places the prompt at y=90%..94%.
+          if(rewardCloses>=3){
+            io.save(b,"奖励弹窗-退出失败");
+            note("FAIL","三种独立的奖励弹窗退出方式均失败；停止点击并记录本项受阻");
+            return false;
+          }
+          io.save(b,"恢复-获得奖励弹窗-尝试"+(rewardCloses+1));
+          if(rewardCloses<2){
+            int ocrX=-1,ocrY=-1;
+            try{
+              ChineseOcr.Result prompt=ocr.read(b);
+              for(ChineseOcr.Item line:prompt.lines){
+                if(line.box==null)continue;
+                String val=ChineseOcr.compact(line.text);
+                int x=line.box.centerX(),y=line.box.centerY();
+                if(val.contains("点击任意")&&val.contains("退出")&&
+                   RewardExitPlanner.promptLocation(b.getWidth(),b.getHeight(),x,y)){
+                  ocrX=x;ocrY=y;break;
+                }
+              }
+            }catch(Exception e){note("WARN","奖励退出提示 OCR 定位失败，采用校准坐标："+e.getMessage());}
+            int[] target=RewardExitPlanner.exitTap(b.getWidth(),b.getHeight(),rewardCloses,ocrX,ocrY);
+            RootBridge.tap(target[0],target[1]);
+            note("INFO","奖励退出 "+(rewardCloses+1)+"/3：点击底部提示位置 ("
+              +target[0]+","+target[1]+")，不是物品格");
+          }else{
+            // Last fallback: Android Back is only allowed after confirming the
+            // rewards overlay is STILL on screen.
+            RootBridge.back();
+            note("INFO","奖励退出 3/3：仍确认是奖励弹窗，尝试一次系统返回");
+          }
           rewardCloses++;
-          note("INFO","根据结算画面文字点击空白处退出");
         }else{
           if(unknownBacks<1) {
             RootBridge.back();
