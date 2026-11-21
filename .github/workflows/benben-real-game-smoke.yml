@@ -1,6 +1,11 @@
 name: Benben official game smoke test
 
 on:
+  push:
+    branches:
+      - benben-assistant-v1
+    paths:
+      - .github/workflows/benben-real-game-smoke.yml
   workflow_dispatch:
     inputs:
       drive_file_id:
