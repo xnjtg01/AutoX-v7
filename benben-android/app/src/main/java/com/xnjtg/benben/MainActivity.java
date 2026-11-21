@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "2.4.0";
+  private static final String VERSION = "2.5.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -152,7 +152,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\nV2.4：根据实测修复获得奖励弹窗退出位置。接入开源 Autopilot 的底部退出提示定位，并新增 GitHub 回归测试，阻止旧错误再次进入新版 APK。");
+    collection.setText("\nV2.5：根据真实诊断图适配石材兵力配置与中文「出征」按钮；发送前验证资源种类和已选兵力，发送后截图确认离开配置页。奖励、互助、日常任务修复均保留。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
