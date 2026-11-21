@@ -11,6 +11,13 @@ import java.util.concurrent.TimeUnit;
 
 public final class RootBridge {
   private RootBridge() {}
+  public interface TouchGuard {
+    void before() throws Exception;
+    void after() throws Exception;
+  }
+  private static volatile TouchGuard touchGuard;
+  public static void setTouchGuard(TouchGuard guard){touchGuard=guard;}
+
   private static Process start(String command) throws Exception {
     return new ProcessBuilder("su","-c",command).redirectErrorStream(false).start();
   }
@@ -45,10 +52,16 @@ public final class RootBridge {
   }
   public static String tap(int x,int y) throws Exception {
     if(x<0||y<0||x>10000||y>10000)throw new Exception("坐标超出范围");
-    Process p=start("input tap "+x+" "+y);
-    if(!p.waitFor(8,TimeUnit.SECONDS)){p.destroyForcibly();throw new Exception("点击操作超时");}
-    if(p.exitValue()!=0)throw new Exception("Root 点击失败，退出码："+p.exitValue());
-    return "Root 点击命令已执行";
+    TouchGuard guard=touchGuard;
+    if(guard!=null)guard.before(); // Remove input-intercepting status overlay.
+    try {
+      Process p=start("input tap "+x+" "+y);
+      if(!p.waitFor(8,TimeUnit.SECONDS)){p.destroyForcibly();throw new Exception("点击操作超时");}
+      if(p.exitValue()!=0)throw new Exception("Root 点击失败，退出码："+p.exitValue());
+      return "Root 点击命令已执行";
+    } finally {
+      if(guard!=null)guard.after(); // Restore stop/status UI even if action fails.
+    }
   }
   public static void back() throws Exception {
     Process p=start("input keyevent 4");
