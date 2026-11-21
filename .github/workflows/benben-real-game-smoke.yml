@@ -6,6 +6,8 @@ on:
       - benben-assistant-v1
     paths:
       - .github/workflows/benben-real-game-smoke.yml
+      - benben-assistant/**
+      - scripts/benben/**
   workflow_dispatch:
     inputs:
       drive_file_id:
@@ -41,6 +43,14 @@ jobs:
           sha256sum "$APK_PATH" | tee smoke-artifacts/apk-sha256.txt
           unzip -t "$APK_PATH" > smoke-artifacts/zip-integrity.txt || { echo "::error::APK zip integrity check failed"; exit 1; }
           unzip -Z1 "$APK_PATH" | grep -E '^lib/[^/]+/' | cut -d/ -f2 | sort -u | tee smoke-artifacts/native-architectures.txt || true
+
+      - name: Check emulator CPU compatibility
+        run: |
+          set -euo pipefail
+          if [ -s smoke-artifacts/native-architectures.txt ] && ! grep -Eq "^(x86|x86_64)$" smoke-artifacts/native-architectures.txt; then
+            echo "::error::APK has native libraries but no x86/x86_64 support; this GitHub-hosted emulator is unsuitable. Use a real ARM64 Android device or ARM64 cloud device."
+            exit 1
+          fi
 
       - name: Inspect Android package
         run: |
