@@ -3,9 +3,10 @@ name: Benben official game smoke test
 on:
   workflow_dispatch:
     inputs:
-      apk_url:
-        description: "Official APK HTTPS URL (leave blank to use BENBEN_APK_URL secret)"
+      drive_file_id:
+        description: "Public Google Drive APK file ID"
         required: false
+        default: "1fpa4cvuLPr7QaqxU9BDDVFCrv530cQ5W"
         type: string
 
 permissions:
@@ -14,30 +15,38 @@ permissions:
 jobs:
   android-game-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
+    env:
+      APK_PATH: /tmp/benben.apk
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify APK source
+      - name: Download APK from public Google Drive share
         env:
-          INPUT_APK_URL: ${{ inputs.apk_url }}
-          SECRET_APK_URL: ${{ secrets.BENBEN_APK_URL }}
+          DRIVE_ID: ${{ inputs.drive_file_id }}
         run: |
-          set -eu
-          APK_URL="${INPUT_APK_URL:-${SECRET_APK_URL:-}}"
-          if [ -z "$APK_URL" ]; then
-            echo "::error::No official APK URL configured. Set BENBEN_APK_URL secret or provide a direct HTTPS URL when starting the workflow."
-            exit 1
-          fi
-          case "$APK_URL" in
-            https://*) ;;
-            *) echo "::error::Only HTTPS APK URLs are accepted"; exit 1;;
-          esac
-          echo "::add-mask::$APK_URL"
-          curl --fail --location --retry 2 --connect-timeout 20 --max-time 300 "$APK_URL" -o /tmp/benben.apk
-          test "$(stat -c%s /tmp/benben.apk)" -gt 1000000 || { echo "::error::Download is not a valid-sized APK"; exit 1; }
-          sha256sum /tmp/benben.apk | tee apk-sha256.txt
+          set -euo pipefail
+          mkdir -p smoke-artifacts
+          python3 -m pip install --quiet gdown
+          python3 -m gdown --id "${DRIVE_ID:-1fpa4cvuLPr7QaqxU9BDDVFCrv530cQ5W}" --output "$APK_PATH"
+          FILESIZE=$(stat -c%s "$APK_PATH")
+          echo "APK bytes: $FILESIZE" | tee smoke-artifacts/apk-size.txt
+          test "$FILESIZE" -gt 1000000 || { echo "::error::APK download unexpectedly small"; exit 1; }
+          sha256sum "$APK_PATH" | tee smoke-artifacts/apk-sha256.txt
+          unzip -t "$APK_PATH" > smoke-artifacts/zip-integrity.txt || { echo "::error::APK zip integrity check failed"; exit 1; }
+          unzip -Z1 "$APK_PATH" | grep -E '^lib/[^/]+/' | cut -d/ -f2 | sort -u | tee smoke-artifacts/native-architectures.txt || true
+
+      - name: Inspect Android package
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq aapt
+          aapt dump badging "$APK_PATH" > smoke-artifacts/apk-badging.txt
+          PKG=$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" smoke-artifacts/apk-badging.txt | head -n1)
+          test -n "$PKG" || { echo "::error::Could not determine APK package identifier"; exit 1; }
+          echo "GAME_PACKAGE=$PKG" >> "$GITHUB_ENV"
+          echo "Package: $PKG" | tee smoke-artifacts/package-name.txt
 
       - name: Run on Android emulator (no account login)
         uses: reactivecircus/android-emulator-runner@v2
@@ -49,25 +58,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             set -eu
-            mkdir -p smoke-artifacts
             adb devices -l | tee smoke-artifacts/adb-devices.txt
-            adb install -r /tmp/benben.apk 2>&1 | tee smoke-artifacts/install.txt
-            adb shell pm path com.got.china 2>&1 | tee smoke-artifacts/package.txt
-            adb shell monkey -p com.got.china -c android.intent.category.LAUNCHER 1 2>&1 | tee smoke-artifacts/launch.txt
-            sleep 20
-            adb shell screencap -p /sdcard/benben-smoke.png
-            adb pull /sdcard/benben-smoke.png smoke-artifacts/launch.png
+            adb install -r "$APK_PATH" 2>&1 | tee smoke-artifacts/install.txt
+            adb shell pm path "$GAME_PACKAGE" | tee smoke-artifacts/installed-package.txt
+            adb shell monkey -p "$GAME_PACKAGE" -c android.intent.category.LAUNCHER 1 2>&1 | tee smoke-artifacts/launch.txt
+            sleep 25
+            adb exec-out screencap -p > smoke-artifacts/launch.png
             adb shell dumpsys activity activities > smoke-artifacts/activities.txt
             adb logcat -d -t 3000 > smoke-artifacts/logcat.txt
-            grep -q 'com.got.china' smoke-artifacts/activities.txt || { echo "::error::Game was not present in foreground activity stack"; exit 1; }
+            grep -Fq "$GAME_PACKAGE" smoke-artifacts/activities.txt || { echo "::error::Game package missing from activity stack"; exit 1; }
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benben-game-smoke-diagnostics
-          path: |
-            smoke-artifacts/
-            apk-sha256.txt
+          path: smoke-artifacts/
           if-no-files-found: warn
           retention-days: 7
