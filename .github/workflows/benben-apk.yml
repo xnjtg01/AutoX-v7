@@ -2,7 +2,7 @@ name: BenBen standalone APK
 on:
   push:
     branches: [benben-assistant-v1]
-    paths: ['benben-android/**', '.github/workflows/benben-apk.yml']
+    paths: ['benben-android/**', '.github/workflows/benben-apk.yml', '.github/scripts/**']
   workflow_dispatch:
 # Collapse rapid development commits into one build, avoiding unnecessary Actions minutes.
 concurrency:
