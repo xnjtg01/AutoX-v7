@@ -8,7 +8,7 @@ import android.graphics.Color;
  * 720x1280 diagnostic captures. Never navigates without checking a page first.
  */
 public final class DomesticScreenNavigation {
-  public enum Page { CITY, MAP, MAIL, MISSIONS, WELCOME, UNKNOWN }
+  public enum Page { CITY, MAP, MAIL, MISSIONS, WELCOME, REWARD, UNKNOWN }
   public interface IO {
     Bitmap screenshot()throws Exception;
     void save(Bitmap bitmap,String label)throws Exception;
@@ -53,7 +53,8 @@ public final class DomesticScreenNavigation {
     try {
       ChineseOcr.Result scanned=ocr.read(b);
       String all=ChineseOcr.compact(scanned.allText);
-      if(all.contains("欢迎回来")&&all.contains("离线"))return Page.WELCOME;
+      if(all.contains("欢迎回来") && (all.contains("离线")||all.contains("收益")))return Page.WELCOME;
+      if(all.contains("获得奖励") && (all.contains("点击任意")||all.contains("退出")))return Page.REWARD;
       if(all.contains("成长任务")&&(all.contains("主线任务")||all.contains("每日任务")))return Page.MISSIONS;
       if(all.contains("邮件")&&all.contains("联盟")&&all.contains("系统"))return Page.MAIL;
       if(VisualEngine.city(b)){
@@ -93,50 +94,74 @@ public final class DomesticScreenNavigation {
     RootBridge.tap(x,y);
   }
   public boolean restoreCity()throws Exception{
-    for(int attempts=0;attempts<4&&!io.stopped();attempts++) {
+    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0;
+    for(int attempts=0;attempts<8&&!io.stopped();attempts++) {
       Bitmap b=io.screenshot();
       Page page;
       try {
         page=detect(b);
-        note("INFO","当前页面="+page+"，恢复尝试="+(attempts+1)+"/4");
+        note("INFO","当前页面="+page+"，恢复检查="+(attempts+1)+"/8");
         if(page==Page.CITY)return true;
         if(page==Page.MISSIONS){
-          io.save(b,"恢复-发现成长任务弹窗");
-          // Source: capture frame_012, top-right close at 515/540,93/960.
-          tap(b,685,125);
-          note("INFO","已点击成长任务右上角关闭");
+          if(missionCloses>=2){
+            io.save(b,"失败-每日任务关闭两次未成功");
+            note("FAIL","已尝试关闭每日任务两次，仍检测到任务面板，停止触摸");
+            return false;
+          }
+          io.save(b,"恢复-发现每日任务弹窗");
+          // From user's 720x1280 screenshots, X is at (687,125).
+          // The global tap guard MUST hide the floating control first.
+          tap(b,687,125);
+          missionCloses++;
+          note("INFO","已在隐藏浮窗后点击任务面板关闭 x=687 y=125");
         }else if(page==Page.MAIL){
+          if(mailCloses>=2){note("FAIL","邮件窗口连续两次关闭失败");return false;}
           io.save(b,"恢复-发现邮件页面");
-          // Source: capture frame_004, top-right close at 513/540,31/960.
-          tap(b,684,42);
-          note("INFO","已点击邮件右上角关闭");
+          tap(b,685,43);
+          mailCloses++;
+          note("INFO","已在隐藏浮窗后点击邮件页面关闭");
         }else if(page==Page.MAP){
           tap(b,658,1230);
           note("INFO","已点击野外地图右下角城镇入口");
         }else if(page==Page.WELCOME){
-          // The dedicated welcome dismiss handler must validate this action.
-          note("FAIL","仍存在欢迎回来弹窗，不使用通用返回操作");
-          io.save(b,"恢复失败-欢迎回来");
-          return false;
+          if(welcomeClicks>=2){
+            io.save(b,"恢复失败-欢迎回来");
+            note("FAIL","欢迎回来弹窗两次确认后仍在，停止点击");
+            return false;
+          }
+          io.save(b,"恢复-欢迎回来确认前");
+          // Matches the center of the actual green confirm button (0.50, 0.802).
+          tap(b,360,1027);
+          welcomeClicks++;
+          note("INFO","已点击欢迎回来绿色确定，随后会重新截图验证");
+        }else if(page==Page.REWARD){
+          if(rewardCloses>=2){note("FAIL","奖励结算画面两次仍未关闭");return false;}
+          io.save(b,"恢复-获得奖励弹窗");
+          // User's OCR output: 获得奖励 / 点击任意位置退出.
+          // Tap a blank part of overlay only while this specific page is detected.
+          tap(b,360,960);
+          rewardCloses++;
+          note("INFO","根据结算画面文字点击空白处退出");
         }else{
-          // A single Android Back is safer than blind coordinate tapping.
-          if(attempts==0) {
+          if(unknownBacks<1) {
             RootBridge.back();
-            note("INFO","未知页面尝试一次系统返回");
+            unknownBacks++;
+            note("INFO","未知页面仅尝试一次系统返回");
           }else {
             io.save(b,"恢复失败-未知页面");
-            note("FAIL","仍不能识别当前页面，停止后续任务");
+            note("FAIL","无法判断界面，停止后续任务");
             return false;
           }
         }
       }finally {b.recycle();}
-      pause();
+      // Rendering and animation have to settle before verifying each action.
+      Thread.sleep(950);
     }
     if(!io.stopped()){
       Bitmap end=io.screenshot();
       try{io.save(end,"恢复失败-最终画面");}finally{end.recycle();}
     }
-    note("FAIL","未能在限定次数内返回城镇，后续任务不再执行");
+    note("FAIL","限定次数内未能回到城镇，后续任务停止");
     return false;
   }
 }
