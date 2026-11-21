@@ -44,12 +44,17 @@ jobs:
           unzip -t "$APK_PATH" > smoke-artifacts/zip-integrity.txt || { echo "::error::APK zip integrity check failed"; exit 1; }
           unzip -Z1 "$APK_PATH" | grep -E '^lib/[^/]+/' | cut -d/ -f2 | sort -u | tee smoke-artifacts/native-architectures.txt || true
 
-      - name: Check emulator CPU compatibility
+      - name: Detect emulator CPU compatibility
+        id: abi
         run: |
           set -euo pipefail
           if [ -s smoke-artifacts/native-architectures.txt ] && ! grep -Eq "^(x86|x86_64)$" smoke-artifacts/native-architectures.txt; then
-            echo "::error::APK has native libraries but no x86/x86_64 support; this GitHub-hosted emulator is unsuitable. Use a real ARM64 Android device or ARM64 cloud device."
-            exit 1
+            echo "x86_compatible=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ARM-only game APK. Skipping incompatible x86_64 emulator (not a game startup test)."
+            echo "ARM-only APK: real ARM64 Android device required for launch validation." > smoke-artifacts/next-step.txt
+          else
+            echo "x86_compatible=true" >> "$GITHUB_OUTPUT"
+            echo "APK ABI compatible with x86 emulator." > smoke-artifacts/next-step.txt
           fi
 
       - name: Inspect Android package
@@ -64,6 +69,7 @@ jobs:
           echo "Package: $PKG" | tee smoke-artifacts/package-name.txt
 
       - name: Run on Android emulator (no account login)
+        if: steps.abi.outputs.x86_compatible == 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -82,6 +88,20 @@ jobs:
             adb shell dumpsys activity activities > smoke-artifacts/activities.txt
             adb logcat -d -t 3000 > smoke-artifacts/logcat.txt
             grep -Fq "$GAME_PACKAGE" smoke-artifacts/activities.txt || { echo "::error::Game package missing from activity stack"; exit 1; }
+
+      - name: Publish validation summary
+        if: always()
+        run: |
+          echo "## Benben APK validation" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f smoke-artifacts/apk-size.txt ]; then cat smoke-artifacts/apk-size.txt >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f smoke-artifacts/native-architectures.txt ]; then
+            echo "### APK native ABIs" >> "$GITHUB_STEP_SUMMARY"
+            cat smoke-artifacts/native-architectures.txt >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f smoke-artifacts/next-step.txt ]; then
+            echo "### Real game testing status" >> "$GITHUB_STEP_SUMMARY"
+            cat smoke-artifacts/next-step.txt >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload diagnostics
         if: always()
