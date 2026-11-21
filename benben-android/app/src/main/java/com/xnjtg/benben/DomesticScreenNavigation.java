@@ -8,7 +8,7 @@ import android.graphics.Color;
  * 720x1280 diagnostic captures. Never navigates without checking a page first.
  */
 public final class DomesticScreenNavigation {
-  public enum Page { CITY, MAP, MAIL, MISSIONS, WELCOME, REWARD, UNKNOWN }
+  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, UNKNOWN }
   public interface IO {
     Bitmap screenshot()throws Exception;
     void save(Bitmap bitmap,String label)throws Exception;
@@ -45,10 +45,45 @@ public final class DomesticScreenNavigation {
     boolean footer=Color.red(bottom)>120&&Color.red(bottom)<200&&Color.green(bottom)<160;
     return ivory&&header&&footer;
   }
+  /** Screenshot-derived screen checks from V1.7 frames 011-013 (720x1280).
+   * Alliance home has a vivid green progress bar; alliance war has a pale
+   * empty rally panel. Both have the same cyan back arrow and brown title bar.
+   */
+  private boolean allianceHeader(Bitmap b){
+    int arrow=sample(b,40f/720f,39f/1280f);
+    int header=sample(b,400f/720f,40f/1280f);
+    return Color.green(arrow)>Color.red(arrow)+30
+       && Color.blue(arrow)>Color.red(arrow)+15
+       && Color.red(header)>=55 && Color.red(header)<=165
+       && Color.green(header)>=48 && Color.green(header)<=135
+       && Color.blue(header)>=32 && Color.blue(header)<=120;
+  }
+  private boolean allianceHome(Bitmap b){
+    if(!allianceHeader(b))return false;
+    int bar=sample(b,300f/720f,390f/1280f);
+    int action=sample(b,200f/720f,1050f/1280f);
+    return Color.green(bar)>=150 && Color.green(bar)>Color.red(bar)+65
+       && Color.green(bar)>Color.blue(bar)+30
+       && Color.red(action)>Color.blue(action)+70
+       && Color.red(action)>Color.green(action)+15;
+  }
+  private boolean allianceWar(Bitmap b){
+    if(!allianceHeader(b))return false;
+    int center=sample(b,300f/720f,390f/1280f);
+    int empty=sample(b,200f/720f,930f/1280f);
+    return paleBeige(center)&&paleBeige(empty);
+  }
+  private boolean paleBeige(int c){
+    int r=Color.red(c),g=Color.green(c),blue=Color.blue(c);
+    return r>=218&&r<=255&&g>=207&&g<=249&&blue>=175&&blue<=235
+      && r>g&&g>blue;
+  }
   public Page detect(Bitmap b) {
     if(VisualEngine.welcome(b))return Page.WELCOME;
     if(missionPanel(b))return Page.MISSIONS;
     if(mailPanel(b))return Page.MAIL;
+    if(allianceHome(b))return Page.ALLIANCE;
+    if(allianceWar(b))return Page.ALLIANCE_WAR;
     // OCR is used for page identity only; any unknown text is not a click target.
     try {
       ChineseOcr.Result scanned=ocr.read(b);
@@ -57,6 +92,13 @@ public final class DomesticScreenNavigation {
       if(all.contains("获得奖励") && (all.contains("点击任意")||all.contains("退出")))return Page.REWARD;
       if(all.contains("成长任务")&&(all.contains("主线任务")||all.contains("每日任务")))return Page.MISSIONS;
       if(all.contains("邮件")&&all.contains("联盟")&&all.contains("系统"))return Page.MAIL;
+      // Secondary fallback for busy alliance-war pages where the central
+      // empty-panel color is replaced by an active rally entry.
+      if(all.contains("联盟战争")&&all.contains("集结")&&all.contains("单人"))
+        return Page.ALLIANCE_WAR;
+      if(all.contains("联盟战争")&&
+         (all.contains("联盟互助")||all.contains("联盟领地")||all.contains("联盟商店")))
+        return Page.ALLIANCE;
       if(VisualEngine.city(b)){
         String bottom=ChineseOcr.compact(scanned.inArea(
           (int)(b.getWidth()*.76f),(int)(b.getHeight()*.89f),
@@ -94,7 +136,7 @@ public final class DomesticScreenNavigation {
     RootBridge.tap(x,y);
   }
   public boolean restoreCity()throws Exception{
-    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0;
+    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0;
     for(int attempts=0;attempts<8&&!io.stopped();attempts++) {
       Bitmap b=io.screenshot();
       Page page;
@@ -120,6 +162,21 @@ public final class DomesticScreenNavigation {
           tap(b,685,43);
           mailCloses++;
           note("INFO","已在隐藏浮窗后点击邮件页面关闭");
+        }else if(page==Page.ALLIANCE || page==Page.ALLIANCE_WAR){
+          // Evidence: V1.7 frames 012 and 013, cyan top-left back arrow.
+          // Android Back returned to alliance home but V1.7 previously
+          // classified that screen UNKNOWN and aborted the entire task queue.
+          if(allianceBacks>=3){
+            io.save(b,"恢复失败-联盟页面");
+            note("FAIL","联盟页面返回三次仍未回城镇，安全停止");
+            return false;
+          }
+          io.save(b,page==Page.ALLIANCE_WAR?
+            "恢复-退出联盟战争":"恢复-退出联盟主页");
+          tap(b,48,40);
+          allianceBacks++;
+          note("INFO","已点击"+(page==Page.ALLIANCE_WAR?"联盟战争":"联盟主页")
+            +"左上角返回，次数="+allianceBacks);
         }else if(page==Page.MAP){
           tap(b,658,1230);
           note("INFO","已点击野外地图右下角城镇入口");
