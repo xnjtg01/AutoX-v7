@@ -176,49 +176,71 @@ public final class CaptureSession {
   /** One real, tightly scoped task: optional welcome dialog + one quick-help tap.
    * Will not tap unless city navigation and reference icon both match.
    */
+  /**
+   * Perform exactly ONE alliance-help action using the clean domestic handshake
+   * image, rather than the international alliance-help.png.
+   * The local status panel is hidden automatically by RootBridge.tap and
+   * cleanScreenshot. A badge may remain if several helps are pending, so a
+   * persistent icon is not evidence the tap failed and does not trigger retries.
+   */
+  private boolean performDomesticAllianceHelp(File temp)throws Exception {
+    if(stopRequested)return false;
+    Bitmap before=cleanScreenshot(temp);
+    KingshotImageMatcher.Match match;
+    try {
+      saveTourFrame(before,"联盟帮助-国内服握手识别前");
+      if(!VisualEngine.city(before)){
+        listener.onEvent("SKIP","联盟帮助","未确认处于城镇主页面，不对未知页面点击");
+        return false;
+      }
+      match=DomesticAllianceHelp.find(before);
+      listener.onEvent("INFO","联盟帮助","国内服握手图标："+match+
+        "；匹配的是握手与绿色弧线，不包括黄色消息数量角标");
+      if(!match.found){
+        listener.onEvent("SKIP","联盟帮助","未识别到握手悬浮快捷按钮；可能当前没有互助请求");
+        return false;
+      }
+    }finally {before.recycle();}
+    if(stopRequested)return false;
+    RootBridge.tap(match.x,match.y);
+    listener.onEvent("INFO","联盟帮助","已点击真实握手按钮一次："+match.x+","+match.y);
+    Thread.sleep(1100);
+    Bitmap after=cleanScreenshot(temp);
+    try {
+      saveTourFrame(after,"联盟帮助-点击握手后");
+      KingshotImageMatcher.Match again=DomesticAllianceHelp.find(after);
+      if(!again.found) {
+        listener.onEvent("OK","联盟帮助","握手图标已经消失或变样，操作已执行；具体互助次数以游戏为准");
+      }else{
+        listener.onEvent("INFO","联盟帮助","握手图标仍然存在，可能仍有其他请求；本轮不重复点击，避免失控");
+      }
+    }finally{after.recycle();}
+    return true;
+  }
   private void autoHelpLoop() {
     File temp=new File(sessionDir,"autotask-working.png");
-    listener.onEvent("START","联盟互助","5秒后进入游戏：关闭欢迎回来弹窗，并在识别到绿色握手快捷按钮时点击一次。");
+    listener.onEvent("START","联盟互助","5秒后自动识别国内服绿色握手图标并只点击一次");
     try {
       for(int i=5;i>0&&!stopRequested;i--)Thread.sleep(1000);
       if(stopRequested)return;
-      Bitmap frame=cleanScreenshot(temp);
-      try{
-        saveTourFrame(frame,"任务开始画面");
-        if(!dismissWelcome(frame,temp))return;
-      }finally{frame.recycle();}
-      if(stopRequested)return;
-      Bitmap current=cleanScreenshot(temp);
+      Bitmap start=cleanScreenshot(temp);
       try {
-        VisualEngine.Observation observation=VisualEngine.inspect(current);
-        listener.onEvent("INFO","联盟互助","画面判断："+observation);
-        saveTourFrame(current,"弹窗处理后画面");
-        if(!observation.city){
-          listener.onEvent("FAIL","联盟互助","无法确认城镇底栏，未执行互助点击");
-          return;
-        }
-        KingshotImageMatcher.Match help=matcher.find(current,"alliance/alliance-help.png",.80);
-        listener.onEvent("INFO","联盟互助","来自 Kingshot 开源素材的模板匹配："+help);
-        if(!help.found){
-          listener.onEvent("INFO","联盟互助","图标匹配未达阈值，可能没有可帮助请求；未点击");
-          return;
-        }
-        listener.onEvent("INFO","联盟互助","使用图像匹配位置执行单次点击："+help.x+","+help.y);
-        RootBridge.tap(help.x,help.y);
-      }finally{current.recycle();}
-      Thread.sleep(1400);
+        saveTourFrame(start,"联盟互助-启动界面");
+        if(!dismissWelcome(start,temp))return;
+      }finally{start.recycle();}
       if(stopRequested)return;
-      Bitmap after=cleanScreenshot(temp);
-      try {
-        saveTourFrame(after,"互助点击后画面");
-        KingshotImageMatcher.Match post=matcher.find(after,"alliance/alliance-help.png",.80);
-        listener.onEvent(post.found?"INFO":"OK","联盟互助","点击后图标匹配："+post+"；仅代表图像状态变化，无法单独证明游戏任务成功");
-      }finally{after.recycle();}
+      if(!navigation(temp).restoreCity()){
+        listener.onEvent("SKIP","联盟互助","没有确认回到城镇，跳过");
+        return;
+      }
+      boolean done=performDomesticAllianceHelp(temp);
+      listener.onEvent(done?"ACTION":"SKIP","联盟互助",
+        done?"已执行一次真实握手点击":"当前没有可确认的互助按钮");
     }catch(InterruptedException e){Thread.currentThread().interrupt();}
     catch(Exception e){failures.add("联盟互助："+e);listener.onEvent("FAIL","联盟互助",e.toString());}
     finally {
       running=false;temp.delete();
-      listener.onEvent("DONE","联盟互助","已结束，截图 "+successes.size()+" 张；可导出 ZIP 核对真实效果。");
+      listener.onEvent("DONE","联盟互助","已结束，截图 "+successes.size()+" 张；如有问题可导出 ZIP");
     }
   }
 
@@ -417,19 +439,8 @@ public final class CaptureSession {
         ()->new KingshotClaimMail(matcher,screen,events,stopped,chineseOcr).run()>0);
       batchStep("每日任务",nav,temp,summary,
         ()->new KingshotClaimMissions(matcher,screen,events,stopped,chineseOcr).run()>0);
-      batchStep("联盟帮助",nav,temp,summary,()->{
-        Bitmap pre=cleanScreenshot(temp);
-        KingshotImageMatcher.Match help;
-        try {
-          help=matcher.find(pre,"alliance/alliance-help.png",.80);
-          listener.onEvent("INFO","联盟帮助","图标识别="+help);
-          if(!VisualEngine.city(pre)||!help.found)return false;
-        }finally{pre.recycle();}
-        if(stopRequested)return false;
-        RootBridge.tap(help.x,help.y);
-        Thread.sleep(900);
-        return true;
-      });
+      batchStep("联盟帮助",nav,temp,summary,
+        ()->performDomesticAllianceHelp(temp));
       batchStep("训练士兵",nav,temp,summary,
         ()->engine.run(KingshotMarchTasks.TRAIN));
       batchStep("加入集结",nav,temp,summary,
