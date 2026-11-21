@@ -306,80 +306,161 @@ public final class CaptureSession {
     catch(Exception e){failures.add(title+":"+e);listener.onEvent("FAIL",title,e.toString());}
     finally{running=false;temp.delete();listener.onEvent("DONE",title,"已结束，截图 "+successes.size()+" 张，可导出诊断 ZIP");}
   }
+  private interface BatchAction {boolean execute() throws Exception;}
+  private static final class BatchSummary {
+    int actions=0,skipped=0,failures=0,blocked=0;
+    final List<String> outcomes=new ArrayList<>();
+    void put(String title,String level,String detail) {
+      outcomes.add(title+"="+level+" ("+detail+")");
+      if("ACTION".equals(level))actions++;
+      else if("SKIP".equals(level))skipped++;
+      else if("FAIL".equals(level))failures++;
+      else if("BLOCKED".equals(level))blocked++;
+    }
+    String overview() {
+      return "尝试操作="+actions+"，条件不满足="+skipped+
+        "，执行异常="+failures+"，页面受阻="+blocked;
+    }
+  }
+  private int batchRecoveryMisses=0;
+
+  /** Each module is a fault boundary. A failed troop-training test cannot
+   * terminate rally, gathering, or hunting tests. Only the explicit Stop button
+   * cancels the queue. If the screen cannot be restored, modules are marked
+   * BLOCKED rather than blindly tapping an unknown screen.
+   */
+  private void batchStep(String name,DomesticScreenNavigation nav,File temp,
+                         BatchSummary summary,BatchAction action){
+    if(stopRequested)return;
+    listener.onEvent("START","联合任务/"+name,"准备恢复城镇并独立检查任务场景");
+    if(batchRecoveryMisses>=3){
+      String reason="连续3次无法确认回到城镇，禁止继续盲点，但后续任务仍会记录 BLOCKED";
+      summary.put(name,"BLOCKED",reason);
+      listener.onEvent("BLOCKED",name,reason);
+      return;
+    }
+    boolean ready=false;
+    try {
+      ready=nav.restoreCity();
+    }catch(InterruptedException e){
+      Thread.currentThread().interrupt();
+      stopRequested=true;
+      listener.onEvent("STOP",name,"用户中止或线程中断");
+      return;
+    }catch(Exception e){
+      listener.onEvent("FAIL","页面恢复/"+name,"恢复异常："+e);
+      failures.add("页面恢复/"+name+"："+e);
+    }
+    if(stopRequested)return;
+    if(!ready){
+      batchRecoveryMisses++;
+      String reason="无法确认城镇主界面，本项不点击。允许下一项重新尝试恢复 (连续失败 "+
+        batchRecoveryMisses+"/3)";
+      summary.put(name,"BLOCKED",reason);
+      listener.onEvent("BLOCKED",name,reason);
+      try {
+        Bitmap screenshot=cleanScreenshot(temp);
+        try {saveTourFrame(screenshot,name+"-恢复失败");}
+        finally {screenshot.recycle();}
+      }catch(Exception e){listener.onEvent("WARN",name,"恢复失败截图异常："+e);}
+      return;
+    }
+    batchRecoveryMisses=0;
+    try {
+      boolean acted=action.execute();
+      if(stopRequested)return;
+      String level=acted?"ACTION":"SKIP";
+      String result=acted?"已执行本项操作，结果待游戏画面确认":"条件未满足或未识别目标，跳过此项；下一项继续";
+      summary.put(name,level,result);
+      listener.onEvent(level,name,result);
+    }catch(InterruptedException e) {
+      Thread.currentThread().interrupt();
+      stopRequested=true;
+      listener.onEvent("STOP",name,"执行中断，停止后续点击");
+    }catch(Exception e){
+      String reason=e.getClass().getSimpleName()+": "+e.getMessage();
+      failures.add(name+"："+reason);
+      summary.put(name,"FAIL",reason);
+      listener.onEvent("FAIL",name,"本项失败，但不终止剩余任务："+reason);
+    }finally {
+      if(!stopRequested){
+        try {
+          Bitmap evidence=cleanScreenshot(temp);
+          try {saveTourFrame(evidence,name+"-执行后状态");}
+          finally {evidence.recycle();}
+        }catch(Exception e){listener.onEvent("WARN",name,"记录本项执行后截图失败："+e);}
+      }
+    }
+  }
   private void allTasksLoop() {
     File temp=new File(sessionDir,"all-working.png");
-    listener.onEvent("START","七项巡检","5 秒后运行：奖励领取、联盟帮助、训练、集结、采集、打野；每项均有图像校验和失败保护。");
-    try{
+    final BatchSummary summary=new BatchSummary();
+    batchRecoveryMisses=0;
+    listener.onEvent("START","七项巡检",
+      "5秒后开始，七项相互隔离。训练失败会跳过训练并继续集结/采集/打野。无法安全识别页面则记录受阻，不盲点。");
+    try {
       for(int i=0;i<5&&!stopRequested;i++)Thread.sleep(1000);
       if(stopRequested)return;
-      Bitmap first=cleanScreenshot(temp);
-      try{
-        saveTourFrame(first,"一键任务起始画面");
-        if(!dismissWelcome(first,temp))return;
-      }finally{first.recycle();}
-      if(stopRequested)return;
-      KingshotClaimMail.Screen screen=new KingshotClaimMail.Screen(){
+      Bitmap startImage=cleanScreenshot(temp);
+      try{saveTourFrame(startImage,"联合任务-开始");}
+      finally{startImage.recycle();}
+      DomesticScreenNavigation nav=navigation(temp);
+      KingshotClaimMail.Screen screen=new KingshotClaimMail.Screen() {
         @Override public Bitmap screenshot()throws Exception{return cleanScreenshot(temp);}
-        @Override public void save(Bitmap bitmap,String label)throws Exception{saveTourFrame(bitmap,label);}
+        @Override public void save(Bitmap b,String label)throws Exception{saveTourFrame(b,label);}
       };
       KingshotClaimMail.Stopped stopped=()->stopRequested;
       KingshotClaimMail.Events events=(level,module,message)->listener.onEvent(level,module,message);
-      // Every module first restores and re-verifies the domestic city screen.
-      DomesticScreenNavigation nav=navigation(temp);
-      try{
-        new KingshotClaimMail(matcher,screen,events,stopped,chineseOcr).run();
-      }catch(Exception e){failures.add("邮件："+e);listener.onEvent("FAIL","邮件奖励",e.toString());}
-      if(!stopRequested && !nav.restoreCity()){
-        listener.onEvent("FAIL","七项巡检","邮件任务后未能恢复城镇，后续任务停止");
-        return;
-      }
-      if(!stopRequested){
-        try{new KingshotClaimMissions(matcher,screen,events,stopped,chineseOcr).run();}
-        catch(Exception e){failures.add("任务："+e);listener.onEvent("FAIL","每日任务",e.toString());}
-      }
-      if(!stopRequested && !nav.restoreCity()){
-        listener.onEvent("FAIL","七项巡检","每日任务后仍处于非城镇界面，停止后续任务");
-        return;
-      }
-      if(!stopRequested){
-        Bitmap pre=cleanScreenshot(temp);
-        try{
-          KingshotImageMatcher.Match help=matcher.find(pre,"alliance/alliance-help.png",.80);
-          listener.onEvent("INFO","联盟帮助","已检测："+help);
-          if(VisualEngine.city(pre)&&help.found){
-            RootBridge.tap(help.x,help.y);
-            Thread.sleep(900);
-            Bitmap after=cleanScreenshot(temp);
-            try{saveTourFrame(after,"一键任务-联盟帮助之后");}
-            finally{after.recycle();}
-            listener.onEvent("INFO","联盟帮助","已执行单次帮助点击，是否成功需看游戏状态");
-          }
-        }catch(Exception e){failures.add("互助："+e);listener.onEvent("FAIL","联盟帮助",e.toString());}
-        finally{pre.recycle();}
-      }
       KingshotMarchTasks engine=marchEngine(temp);
-      // Source-derived one-cycle ordering: base-view operations before map-view ones.
-      int[] tasks={KingshotMarchTasks.TRAIN,KingshotMarchTasks.RALLY,
-        KingshotMarchTasks.FARM,KingshotMarchTasks.HUNT};
-      String[] names={"训练士兵","加入集结","资源采集","自动打野怪"};
-      for(int i=0;i<tasks.length&&!stopRequested;i++){
-        try{
-          if(!nav.restoreCity()){
-            listener.onEvent("FAIL","七项巡检",names[i]+"执行前未能返回城镇，中断任务队列");
-            break;
-          }
-          boolean ok=engine.run(tasks[i]);
-          listener.onEvent(ok?"OK":"SKIP",names[i],ok?"已执行单次源代码移植操作，等待游戏结果核实":"不满足可靠识别条件，已跳过");
-        }catch(Exception e){
-          failures.add(names[i]+":"+e);
-          listener.onEvent("FAIL",names[i],e.toString());
+
+      batchStep("邮件奖励",nav,temp,summary,
+        ()->new KingshotClaimMail(matcher,screen,events,stopped,chineseOcr).run()>0);
+      batchStep("每日任务",nav,temp,summary,
+        ()->new KingshotClaimMissions(matcher,screen,events,stopped,chineseOcr).run()>0);
+      batchStep("联盟帮助",nav,temp,summary,()->{
+        Bitmap pre=cleanScreenshot(temp);
+        KingshotImageMatcher.Match help;
+        try {
+          help=matcher.find(pre,"alliance/alliance-help.png",.80);
+          listener.onEvent("INFO","联盟帮助","图标识别="+help);
+          if(!VisualEngine.city(pre)||!help.found)return false;
+        }finally{pre.recycle();}
+        if(stopRequested)return false;
+        RootBridge.tap(help.x,help.y);
+        Thread.sleep(900);
+        return true;
+      });
+      batchStep("训练士兵",nav,temp,summary,
+        ()->engine.run(KingshotMarchTasks.TRAIN));
+      batchStep("加入集结",nav,temp,summary,
+        ()->engine.run(KingshotMarchTasks.RALLY));
+      batchStep("资源采集",nav,temp,summary,
+        ()->engine.run(KingshotMarchTasks.FARM));
+      batchStep("自动打野怪",nav,temp,summary,
+        ()->engine.run(KingshotMarchTasks.HUNT));
+    }catch(InterruptedException e){
+      Thread.currentThread().interrupt();
+      stopRequested=true;
+      listener.onEvent("STOP","七项巡检","用户停止了联合任务");
+    }catch(Exception e){
+      failures.add("批量流程："+e);
+      listener.onEvent("FAIL","七项巡检","批量流程异常："+e);
+    }finally {
+      try{
+        File statusFile=new File(sessionDir,"batch-outcomes.txt");
+        StringBuilder output=new StringBuilder("联合任务 V1.9 结果\n");
+        output.append(summary.overview()).append("\n");
+        for(String item:summary.outcomes)output.append(item).append("\n");
+        try(FileOutputStream out=new FileOutputStream(statusFile)){
+          out.write(output.toString().getBytes("UTF-8"));
         }
-      }
-    }catch(InterruptedException e){Thread.currentThread().interrupt();}
-    catch(Exception e){failures.add("全量任务："+e);listener.onEvent("FAIL","一键任务",e.toString());}
-    finally{
-      running=false;temp.delete();
-      listener.onEvent("DONE","七项巡检","本轮完成，自动点击仅限匹配成功的页面；成功项需在游戏里验证。已保存 "+successes.size()+" 张截图");
+      }catch(Exception e){listener.onEvent("WARN","七项巡检","结果汇总保存失败："+e);}
+      running=false;
+      temp.delete();
+      listener.onEvent("DONE","七项巡检",
+        summary.overview()+"；"+(stopRequested?"已手动停止":"已测试可安全访问的场景")
+        +"。请查看执行日志或导出 ZIP。");
+      for(String outcome:summary.outcomes)listener.onEvent("RESULT","任务汇总",outcome);
     }
   }
   /** Known, low-risk navigation only: city -> alliance -> back -> wilderness -> back.
