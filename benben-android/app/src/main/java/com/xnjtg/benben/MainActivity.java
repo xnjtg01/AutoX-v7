@@ -79,6 +79,13 @@ public class MainActivity extends Activity {
     TextView heading=new TextView(this);heading.setText("奔奔王国助手");heading.setTextSize(24);heading.setTextColor(Color.rgb(15,43,78));root.addView(heading);
     TextView sub=new TextView(this);sub.setText("V"+VERSION+" · 集中测试 / 错误收录\n独立 APK · 截图识别 + 弹窗处理 + 联盟互助单次尝试");sub.setTextSize(14);root.addView(sub);
     overlay=new StatusOverlay(this,()->{captureSession.stop();record("INFO","画面采样","用户在浮窗中点击停止");});
+    // The floating stop panel is input-interactive: it MUST be removed before
+    // any Root game tap, not just screenshots. Otherwise it consumes the
+    // daily-missions top-right X (confirmed by user diagnostic captures).
+    RootBridge.setTouchGuard(new RootBridge.TouchGuard(){
+      @Override public void before()throws Exception{overlay.beforeScreenshot();}
+      @Override public void after()throws Exception{overlay.afterScreenshot();}
+    });
     captureSession=new CaptureSession(getExternalFilesDir(null),this::record,new CaptureSession.ScreenshotGuard(){
       public void before()throws Exception{overlay.beforeScreenshot();}
       public void after()throws Exception{overlay.afterScreenshot();}
@@ -266,7 +273,11 @@ public class MainActivity extends Activity {
     }catch(Exception e){android.util.Log.w("BenBenAssistant","Cannot load prior log",e);}
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
   }
-  @Override protected void onDestroy(){if(overlay!=null)overlay.hide();super.onDestroy();}
+  @Override protected void onDestroy(){
+    RootBridge.setTouchGuard(null);
+    if(overlay!=null)overlay.hide();
+    super.onDestroy();
+  }
   @Override protected void onActivityResult(int request,int result,Intent data) {
     super.onActivityResult(request,result,data);
     if(request!=EXPORT_ZIP_REQUEST||result!=RESULT_OK||data==null||data.getData()==null)return;
