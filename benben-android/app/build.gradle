@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.xnjtg.benben'
     compileSdk 35
-    defaultConfig { applicationId 'com.xnjtg.benben'; minSdk 26; targetSdk 28; versionCode 19; versionName '1.9.0' }
+    defaultConfig { applicationId 'com.xnjtg.benben'; minSdk 26; targetSdk 28; versionCode 20; versionName '2.0.0' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
