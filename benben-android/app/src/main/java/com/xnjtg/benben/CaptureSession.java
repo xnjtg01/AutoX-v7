@@ -56,13 +56,14 @@ public final class CaptureSession {
   private synchronized boolean startMode(int mode) {
     if(running) return false;
     running=true;stopRequested=false;successes.clear();failures.clear();welcomeTapCount=0;lastSignature=null;
-    sessionDir=new File(root,"capture-session");
+    // Every run gets its own directory: never overwrite earlier evidence while
+    // logs persist across app restarts. (Previously frame_001 files were recycled.)
+    sessionDir=new File(new File(root,"diagnostic-sessions"),
+      "session-"+System.currentTimeMillis()+"-"+mode);
     if(!sessionDir.exists()&&!sessionDir.mkdirs()) {
-      running=false;listener.onEvent("FAIL","画面采样","无法创建截图目录");return false;
+      running=false;listener.onEvent("FAIL","画面采样","无法创建本次独立截图目录");return false;
     }
-    // Remove old captures so ZIP never accidentally mixes two sessions.
-    File[] existing=sessionDir.listFiles();
-    if(existing!=null)for(File f:existing)if(f.isFile() && f.getName().startsWith("frame_"))f.delete();
+    listener.onEvent("INFO","诊断存档","新会话目录："+sessionDir.getName());
     worker=new Thread(()->{
       if(mode==0)captureLoop();
       else if(mode==1)tourLoop();
@@ -518,7 +519,7 @@ public final class CaptureSession {
     try(ZipOutputStream zip=new ZipOutputStream(new BufferedOutputStream(destination))){
       putText(zip,"README.txt","奔奔王国助手集中测试包\n本地保存，未经手动导出不上传。\n截图为 JPEG 540px 宽，时间顺序排列。\n请在分享前检查画面是否包含隐私内容。\n");
       putText(zip,"diagnostic-report.txt",report);
-      putText(zip,"capture-summary.txt","captured="+successes.size()+"\nfailed="+failures.size()+"\n"+String.join("\n",successes)+"\nFAILURES:\n"+String.join("\n",failures));
+      putText(zip,"capture-summary.txt","session="+sessionDir.getName()+"\n"+"captured="+successes.size()+"\nfailed="+failures.size()+"\n"+String.join("\n",successes)+"\nFAILURES:\n"+String.join("\n",failures));
       File[] entries=sessionDir.listFiles();
       if(entries!=null)for(File entry:entries){
         if(!entry.isFile()||!entry.getName().matches("frame_[0-9]{3}\\.jpg"))continue;
