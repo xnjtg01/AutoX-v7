@@ -27,6 +27,14 @@ public final class CaptureSession {
   private final ScreenshotGuard guard;
   private final KingshotImageMatcher matcher;
   private final ChineseOcr chineseOcr=new ChineseOcr();
+  private volatile String gatherResource="石材";
+  /** User-selected domestic resource; default remains stone for older configs. */
+  public void setGatherResource(String resource){
+    for(String type:DomesticResourcePicker.RESOURCES){
+      if(type.equals(resource)){gatherResource=type;return;}
+    }
+    throw new IllegalArgumentException("不支持的采集资源："+resource);
+  }
   private volatile boolean running=false;
   private volatile boolean stopRequested=false;
   private volatile Thread worker;
@@ -306,7 +314,7 @@ public final class CaptureSession {
         listener.onEvent(level,module,message);
       }
       @Override public boolean stopped(){return stopRequested;}
-    },chineseOcr);
+    },chineseOcr,gatherResource);
   }
   private void marchLoop(int task){
     final String[] types={"资源采集","加入集结","打野怪","训练士兵"};
