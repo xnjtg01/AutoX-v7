@@ -68,3 +68,26 @@ jobs:
         with:
           name: BenBen-Assistant-preview-APK
           path: benben-android/app/build/outputs/apk/debug/app-debug.apk
+
+  mumu-e2e:
+    # NEVER run untrusted PR code on Windows with MuMu or a game login.
+    # Manual opt-in requires a dedicated runner labeled benben-mumu.
+    if: ${{ vars.BENBEN_MUMU_E2E == 'enabled' && (github.event_name == 'workflow_dispatch' || vars.BENBEN_MUMU_ON_PUSH == 'true') }}
+    needs: build
+    runs-on: [self-hosted, Windows, benben-mumu]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: BenBen-Assistant-preview-APK
+          path: ${{ runner.temp }}/benben-apk
+      - name: Install on local MuMu, run game and report seven scenes
+        shell: pwsh
+        run: |
+          ./.github/scripts/benben-mumu-e2e.ps1 -ApkPath "${{ runner.temp }}/benben-apk/app-debug.apk"
+      # No user screenshots, game chat, or account IDs are uploaded.
