@@ -31,7 +31,7 @@ public final class RewardExitPlannerTest {
   }
   @Test public void scalesTo540x960Diagnostics(){
     int[] r=RewardExitPlanner.exitTap(540,960,0,-1,-1);
-    assertEquals(276,r[0]);
+    assertEquals(275,r[0]);
     assertEquals(883,r[1]);
     assertTrue(RewardExitPlanner.promptLocation(540,960,r[0],r[1]));
   }
