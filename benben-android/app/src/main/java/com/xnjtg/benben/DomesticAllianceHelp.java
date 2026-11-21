@@ -21,7 +21,7 @@ public final class DomesticAllianceHelp {
   private static final String REF_RGB_BASE64=
     "iHRc8tu55dyj6Nyo8d6z/ee+3sWc6NCk7dmk7tej7s+g9N6t7+at6uCi89qX982Dmn9i7M2h9NWe9tSk+9Wu98yq1KJ/3aeB672J9sSR4q+A2Kx948CI+9GV8bZ6/L6L58Wg98yZ/Myb+tGj99u0/+XAoHpTyptx4qiA0Zdy2qeI+M2rlWU//7uS/aV93Zx26r2W78eM+M2a9Nak7ua48eq++OW6dFgpdF0xrpx05uG59PXN5d2vn35R3Z5156B21phz6Lx/8cKM9dCb8dKk/t2y9dSp+d2t/+O3+t2z9+Kz9N+w/Nuw/9awrGpKxHddYEAarmQ9waBq3bOB/86k/86m+NSk79ii9tuk+dij9tGd/9al8bOK4Jhy35px0aNxRjkWp2BEmlo0hEAbsnRN88SY99ek8tKf9NGZ9M2W/8uZ7q+D0odfpFQv1Ilh1ppmUls+cF9Br2tUuW5X/8WhuZNk2LqI/9Wq+saW8r2L0IthnVIryoBd4Z98h1IowZBlr7+lNF01VVk0X0Ah05J0xY9psIdbsHlS3Z92yYhe04RjxXRWs3RVsoZjkIJVOFMc9f/yccCTK5laG0kadEInkEsu5qqFmWY7eD0V1pJvq1o/zIBol3ZVT1QrR4ZNHqZc8/3y2vvoLZRcMJNaLFcpVkYikk4r0pJmzphsj1AtqnFTbEssGUIWNJlfC6JdEple/v/78/313froe8uoHJtkKo5aPVcyPjoXVUglNkMYGm4wI6FYB5dRIaZlWb2Lz/vi/vr7//b6//Dv/fr1z/zoiNO0L5lpHZBZFqFgD5xaHplgM5lneLiWy/Xd7//x+Pfz9vT3//r/9/fr6/3t5P/x8v/42/jkr+/Ni+G6kOC9sujQ2v/t7v/37vvy7/r08vb1";
   private static final byte[] reference=Base64.decode(REF_RGB_BASE64,Base64.NO_WRAP);
-  private static final double THRESHOLD=.78;
+  private static final double THRESHOLD=.74;
 
   public static KingshotImageMatcher.Match find(Bitmap image) {
     int w=image.getWidth(),h=image.getHeight();
