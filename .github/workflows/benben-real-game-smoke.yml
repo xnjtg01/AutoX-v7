@@ -44,18 +44,10 @@ jobs:
           unzip -t "$APK_PATH" > smoke-artifacts/zip-integrity.txt || { echo "::error::APK zip integrity check failed"; exit 1; }
           unzip -Z1 "$APK_PATH" | grep -E '^lib/[^/]+/' | cut -d/ -f2 | sort -u | tee smoke-artifacts/native-architectures.txt || true
 
-      - name: Detect emulator CPU compatibility
-        id: abi
+      - name: Record ABI translation experiment
         run: |
-          set -euo pipefail
-          if [ -s smoke-artifacts/native-architectures.txt ] && ! grep -Eq "^(x86|x86_64)$" smoke-artifacts/native-architectures.txt; then
-            echo "x86_compatible=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::ARM-only game APK. Skipping incompatible x86_64 emulator (not a game startup test)."
-            echo "ARM-only APK: real ARM64 Android device required for launch validation." > smoke-artifacts/next-step.txt
-          else
-            echo "x86_compatible=true" >> "$GITHUB_OUTPUT"
-            echo "APK ABI compatible with x86 emulator." > smoke-artifacts/next-step.txt
-          fi
+          echo "This run attempts ARM native-bridge translation on Android 35 x86_64." > smoke-artifacts/next-step.txt
+          echo "ARM-only APK support is experimental and not guaranteed." >> smoke-artifacts/next-step.txt
 
       - name: Inspect Android package
         run: |
@@ -68,26 +60,38 @@ jobs:
           echo "GAME_PACKAGE=$PKG" >> "$GITHUB_ENV"
           echo "Package: $PKG" | tee smoke-artifacts/package-name.txt
 
-      - name: Run on Android emulator (no account login)
-        if: steps.abi.outputs.x86_compatible == 'true'
+      - name: Experiment - Android 35 x86_64 ARM translation (no login)
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
-          profile: pixel_6
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          profile: pixel_5
+          emulator-options: -no-snapshot-load -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
           script: |
-            set -eu
-            adb devices -l | tee smoke-artifacts/adb-devices.txt
-            adb install -r "$APK_PATH" 2>&1 | tee smoke-artifacts/install.txt
-            adb shell pm path "$GAME_PACKAGE" | tee smoke-artifacts/installed-package.txt
-            adb shell monkey -p "$GAME_PACKAGE" -c android.intent.category.LAUNCHER 1 2>&1 | tee smoke-artifacts/launch.txt
+            set -u
+            mkdir -p smoke-artifacts
+            adb devices -l > smoke-artifacts/adb-devices.txt 2>&1
+            adb shell getprop ro.product.cpu.abilist > smoke-artifacts/emulator-abis.txt 2>&1
+            adb shell getprop ro.dalvik.vm.native.bridge > smoke-artifacts/native-bridge.txt 2>&1
+            adb shell getprop ro.enable.native.bridge >> smoke-artifacts/native-bridge.txt 2>&1
+            if ! adb install -r "$APK_PATH" > smoke-artifacts/install.txt 2>&1; then
+              echo "::error::APK installation failed. See diagnostics artifact."
+              adb logcat -d -t 2000 > smoke-artifacts/logcat.txt 2>&1 || true
+              exit 1
+            fi
+            adb shell pm path "$GAME_PACKAGE" > smoke-artifacts/installed-package.txt 2>&1
+            adb shell monkey -p "$GAME_PACKAGE" -c android.intent.category.LAUNCHER 1 > smoke-artifacts/launch.txt 2>&1
             sleep 25
-            adb exec-out screencap -p > smoke-artifacts/launch.png
-            adb shell dumpsys activity activities > smoke-artifacts/activities.txt
-            adb logcat -d -t 3000 > smoke-artifacts/logcat.txt
-            grep -Fq "$GAME_PACKAGE" smoke-artifacts/activities.txt || { echo "::error::Game package missing from activity stack"; exit 1; }
+            adb exec-out screencap -p > smoke-artifacts/launch.png || true
+            adb shell dumpsys activity activities > smoke-artifacts/activities.txt 2>&1
+            adb logcat -d -t 3500 > smoke-artifacts/logcat.txt 2>&1
+            if ! grep -Fq "$GAME_PACKAGE" smoke-artifacts/activities.txt; then
+              echo "::error::Game not found in activity stack after launch"
+              exit 1
+            fi
+            echo "APK installed and activity stack contained game package; visual functionality not yet verified." > smoke-artifacts/next-step.txt
 
       - name: Publish validation summary
         if: always()
