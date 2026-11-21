@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "2.3.0";
+  private static final String VERSION = "2.4.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -152,7 +152,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\nV2.3：动态识别可移动的红色野兽集结通知，不依赖固定坐标；没有互助/集结图标时正常跳过。按国内服截图识别资源详情中文「采集」，并恢复野外搜索面板。");
+    collection.setText("\nV2.4：根据实测修复获得奖励弹窗退出位置。接入开源 Autopilot 的底部退出提示定位，并新增 GitHub 回归测试，阻止旧错误再次进入新版 APK。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -302,6 +302,19 @@ public class MainActivity extends Activity {
       }
     }catch(Exception e){android.util.Log.w("BenBenAssistant","Cannot load prior log",e);}
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
+    // The local, opt-in MuMu E2E runner may start this DEBUG APK by an explicit
+    // ADB intent. Normal users and release builds never auto-run gameplay.
+    if(BuildConfig.DEBUG && getIntent()!=null &&
+       "com.xnjtg.benben.RUN_LOCAL_E2E".equals(getIntent().getAction())){
+      if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
+        record("FAIL","自动回归测试","请先在测试 MuMu 中授予悬浮窗权限");
+      }else{
+        overlay.show("奔奔助手 V"+VERSION+"\nMuMu 受控自动测试执行中");
+        if(!captureSession.startAllTasks())
+          record("FAIL","自动回归测试","无法启动七项测试，当前已有任务在运行");
+        else record("START","自动回归测试","来自本机 ADB 的显式测试入口，5秒后切换到游戏");
+      }
+    }
   }
   @Override protected void onDestroy(){
     if(captureSession!=null)captureSession.stop();
