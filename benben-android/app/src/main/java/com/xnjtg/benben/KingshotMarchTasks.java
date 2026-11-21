@@ -202,25 +202,35 @@ public final class KingshotMarchTasks {
     RootBridge.tap(collectX,collectY);
     sleep(1200);
     Bitmap march=io.screenshot();
+    DomesticMarchDeploy.Target deploy;
     try{
       io.save(march,"采集-点击采集后出征界面");
-      if(navigation.detect(march)==DomesticScreenNavigation.Page.RESOURCE_DETAIL){
-        msg(tag,"SKIP","点击后仍是资源详情页，未证明进入出征画面，停止派兵");
+      // Verify selected resource, loaded troop count and the real Chinese
+      // cyan 出征 button. Upstream English template was 0.281 confidence.
+      deploy=DomesticMarchDeploy.inspect(march,ocr,resourceType);
+      msg(tag,"INFO","国内服出征页验证："+deploy);
+      if(!deploy.confirmed){
+        msg(tag,"SKIP","没有同时确认石材/兵力/出征按钮，不会派兵");
         return false;
       }
     }finally{march.recycle();}
     if(quit())return false;
-    if(match(tag,"farming/no-troops.png",.72,0,180,720,1050).found){
-      msg(tag,"SKIP","没有可出征士兵，不会派遣");
-      return false;
-    }
-    if(match(tag,"farming/max-march.png",.75,200,250,310,170).found){
-      msg(tag,"SKIP","行军队列已满，不会派遣");
-      return false;
-    }
-    if(!tap(tag,"farming/deploy-button.png",.79,388,1159,315,107))return false;
-    msg(tag,"INFO","已尝试派遣一支队伍采集 "+resourceType+"，是否成功需验证游戏行军队列");
-    return true;
+    RootBridge.tap(deploy.x,deploy.y);
+    msg(tag,"INFO","已点击国内服出征按钮 ("+deploy.x+","+deploy.y+")；随后检查画面是否离开配置页");
+    sleep(1500);
+    Bitmap after=io.screenshot();
+    try{
+      io.save(after,"采集-点击出征后");
+      // A click alone is insufficient evidence. The deployment dialog must
+      // disappear; if it still exists do not click again or claim success.
+      DomesticMarchDeploy.Target stillOpen=DomesticMarchDeploy.inspect(after,ocr,resourceType);
+      if(stillOpen.confirmed){
+        msg(tag,"SKIP","出征按钮点击后仍停留在配置页，未确认成功出征；停止重试");
+        return false;
+      }
+      msg(tag,"INFO","石材出征配置页已关闭，已尝试派出一队；采集是否成功仍需行军队列验证");
+      return true;
+    }finally{after.recycle();}
   }
   /** Search dynamic red beast shortcut on both city/world screens.
    * If no rally request exists, the icon is ABSENT; this is normal, not a
