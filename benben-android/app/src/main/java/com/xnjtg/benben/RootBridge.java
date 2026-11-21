@@ -63,6 +63,24 @@ public final class RootBridge {
       if(guard!=null)guard.after(); // Restore stop/status UI even if action fails.
     }
   }
+  /** Horizontal gesture on domestic wilderness's scrolling resource strip.
+   * Uses the same touch guard as tap to temporarily hide the floating overlay.
+   */
+  public static void swipe(int x1,int y1,int x2,int y2,int durationMs)throws Exception {
+    if(x1<0||x2<0||y1<0||y2<0||x1>10000||x2>10000||
+       y1>10000||y2>10000||durationMs<100||durationMs>1500)
+      throw new Exception("滑动参数无效");
+    TouchGuard guard=touchGuard;
+    if(guard!=null)guard.before();
+    try{
+      Process p=start("input swipe "+x1+" "+y1+" "+x2+" "+y2+" "+durationMs);
+      if(!p.waitFor(8,TimeUnit.SECONDS)){
+        p.destroyForcibly();
+        throw new Exception("Root 滑动超时");
+      }
+      if(p.exitValue()!=0)throw new Exception("Root 滑动失败，退出码="+p.exitValue());
+    }finally{if(guard!=null)guard.after();}
+  }
   public static void back() throws Exception {
     Process p=start("input keyevent 4");
     if(!p.waitFor(8,TimeUnit.SECONDS)){p.destroyForcibly();throw new Exception("返回操作超时");}
