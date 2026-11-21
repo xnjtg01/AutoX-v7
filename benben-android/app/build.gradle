@@ -2,10 +2,11 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.xnjtg.benben'
     compileSdk 35
-    defaultConfig { applicationId 'com.xnjtg.benben'; minSdk 26; targetSdk 28; versionCode 23; versionName '2.3.0' }
+    defaultConfig { applicationId 'com.xnjtg.benben'; minSdk 26; targetSdk 28; versionCode 24; versionName '2.4.0' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 dependencies {
     // Bundled/offline Chinese model: works without Google Play Services.
     implementation 'com.google.mlkit:text-recognition-chinese:16.0.1'
+    testImplementation 'junit:junit:4.13.2'
 }
