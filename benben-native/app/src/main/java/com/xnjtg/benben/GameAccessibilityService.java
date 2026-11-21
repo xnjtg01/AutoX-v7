@@ -18,7 +18,18 @@ public class GameAccessibilityService extends AccessibilityService {
  @Override public void onAccessibilityEvent(AccessibilityEvent e){}
  @Override public void onInterrupt(){append("服务已中断");}
  @Override public void onDestroy(){active=false;handler.removeCallbacks(tick);super.onDestroy();}
- private void step(){if(prefs==null||!prefs.getBoolean("running",false))return;
+ private void step(){
+        if(prefs!=null && prefs.getBoolean("ocr_request",false)) {
+            AccessibilityNodeInfo current=getRootInActiveWindow();
+            boolean inGame=current!=null && "com.got.china".equals(String.valueOf(current.getPackageName()));
+            if(current!=null)current.recycle();
+            if(inGame){
+                prefs.edit().putBoolean("ocr_request",false).apply();
+                append("开始屏幕 OCR 诊断");
+                ScreenRecognition.captureAndRead(this, result->append("OCR: "+result));
+            }
+        }
+        if(prefs==null||!prefs.getBoolean("running",false))return;
  AccessibilityNodeInfo root=getRootInActiveWindow();if(root==null)return;
  try{if(!"com.got.china".equals(String.valueOf(root.getPackageName())))return;
  if(System.currentTimeMillis()-lastAction<COOLDOWN_MS)return;
