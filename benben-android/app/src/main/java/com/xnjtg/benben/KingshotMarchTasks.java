@@ -268,6 +268,17 @@ public final class KingshotMarchTasks {
     RootBridge.tap(clickX,clickY);
     sleep(1000);
     if(quit())return false;
+    // V1.7 diagnostics showed '步兵已完成' but the following Train image
+    // scored only 0.729 (< 0.79). Save the actual post-tap screen instead
+    // of reducing the confidence threshold and risking a wrong tap.
+    Bitmap opened=io.screenshot();
+    try {
+      io.save(opened,"训练-"+types[selected]+"-点击完成状态后");
+      try{
+        String afterText=ChineseOcr.compact(ocr.read(opened).allText);
+        msg(tag,"INFO","点击已完成队列后的界面文字="+afterText);
+      }catch(Exception e){msg(tag,"WARN","训练弹窗 OCR 无法读取："+e.getMessage());}
+    }finally{opened.recycle();}
     KingshotImageMatcher.Match train=match(tag,"trooptraining/train.png",.79,70,225,600,820);
     if(!train.found){
       msg(tag,"SKIP","未找到 Train 图标，不会触发训练");
