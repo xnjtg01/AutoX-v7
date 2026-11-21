@@ -601,6 +601,15 @@ public final class CaptureSession {
       putText(zip,"README.txt","奔奔王国助手集中测试包\n本地保存，未经手动导出不上传。\n截图为 JPEG 540px 宽，时间顺序排列。\n请在分享前检查画面是否包含隐私内容。\n");
       putText(zip,"diagnostic-report.txt",report);
       putText(zip,"capture-summary.txt","session="+sessionDir.getName()+"\n"+"captured="+successes.size()+"\nfailed="+failures.size()+"\n"+String.join("\n",successes)+"\nFAILURES:\n"+String.join("\n",failures));
+      File outcome=new File(sessionDir,"batch-outcomes.txt");
+      if(outcome.isFile()){
+        zip.putNextEntry(new ZipEntry("batch-outcomes.txt"));
+        try(FileInputStream in=new FileInputStream(outcome)){
+          byte[] b=new byte[8192];int n;
+          while((n=in.read(b))!=-1)zip.write(b,0,n);
+        }
+        zip.closeEntry();
+      }
       File[] entries=sessionDir.listFiles();
       if(entries!=null)for(File entry:entries){
         if(!entry.isFile()||!entry.getName().matches("frame_[0-9]{3}\\.jpg"))continue;
