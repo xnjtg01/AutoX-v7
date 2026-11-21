@@ -8,7 +8,7 @@ import android.graphics.Color;
  * 720x1280 diagnostic captures. Never navigates without checking a page first.
  */
 public final class DomesticScreenNavigation {
-  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, TRANSITION, UNKNOWN }
+  public enum Page { CITY, MAP, MAIL, MISSIONS, ALLIANCE, ALLIANCE_WAR, WELCOME, REWARD, RESOURCE_DETAIL, RESOURCE_SEARCH, TRANSITION, UNKNOWN }
   public interface IO {
     Bitmap screenshot()throws Exception;
     void save(Bitmap bitmap,String label)throws Exception;
@@ -116,6 +116,15 @@ public final class DomesticScreenNavigation {
     if(mailPanel(b))return Page.MAIL;
     if(allianceHome(b))return Page.ALLIANCE;
     if(allianceWar(b))return Page.ALLIANCE_WAR;
+    // The user's V2.2 diagnostic frames 024-030 show the turquoise wilderness
+    // search button persists behind the resource detail popup. This is not
+    // UNKNOWN and must be closed in two stages before returning to the city.
+    if(DomesticResourcePicker.searchPanelVisible(b)){
+      int l=sample(b,.21f,.30f),r=sample(b,.79f,.30f);
+      boolean popup=Color.red(l)>235&&Color.green(l)>228&&Color.blue(l)>220&&
+        Color.red(r)>235&&Color.green(r)>228&&Color.blue(r)>220;
+      return popup?Page.RESOURCE_DETAIL:Page.RESOURCE_SEARCH;
+    }
     // OCR is used for page identity only; any unknown text is not a click target.
     try {
       ChineseOcr.Result scanned=ocr.read(b);
@@ -173,7 +182,7 @@ public final class DomesticScreenNavigation {
     RootBridge.tap(x,y);
   }
   public boolean restoreCity()throws Exception{
-    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0, transitionWaits=0;
+    int welcomeClicks=0, missionCloses=0, mailCloses=0, rewardCloses=0, unknownBacks=0, allianceBacks=0, transitionWaits=0, resourceDetailBacks=0, resourcePanelBacks=0;
     for(int attempts=0;attempts<16&&!io.stopped();attempts++) {
       Bitmap b=io.screenshot();
       Page page;
@@ -226,6 +235,26 @@ public final class DomesticScreenNavigation {
           allianceBacks++;
           note("INFO","已点击"+(page==Page.ALLIANCE_WAR?"联盟战争":"联盟主页")
             +"左上角返回，次数="+allianceBacks);
+        }else if(page==Page.RESOURCE_DETAIL || page==Page.RESOURCE_SEARCH){
+          if(page==Page.RESOURCE_DETAIL){
+            if(resourceDetailBacks>=2){
+              io.save(b,"恢复失败-石材详情无法关闭");
+              note("FAIL","资源详情弹窗两次返回仍未关闭；停止尝试");
+              return false;
+            }
+            io.save(b,"恢复-石材详情弹窗");
+            RootBridge.back();resourceDetailBacks++;
+            note("INFO","识别到采集资源详情，先执行返回以关闭详情弹窗");
+          }else{
+            if(resourcePanelBacks>=2){
+              io.save(b,"恢复失败-资源搜索面板无法关闭");
+              note("FAIL","资源搜索面板两次返回仍未关闭；不乱点地图");
+              return false;
+            }
+            io.save(b,"恢复-资源搜索面板");
+            RootBridge.back();resourcePanelBacks++;
+            note("INFO","识别到野外横向资源搜索面板，执行返回关闭，随后恢复城镇");
+          }
         }else if(page==Page.MAP){
           tap(b,658,1230);
           note("INFO","已点击野外地图右下角城镇入口");
