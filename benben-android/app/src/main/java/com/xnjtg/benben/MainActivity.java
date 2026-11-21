@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "2.1.0";
+  private static final String VERSION = "2.2.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -152,7 +152,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\nV2.1：根据国内服真实截图新增绿色握手快捷互助识别，不再依赖国际服联盟帮助模板；只点击一次，自动保存点击前后截图。其余七项容错测试与诊断功能保留。");
+    collection.setText("\nV2.2：使用原版 APK 的面包、木材、石材、铁矿采集配置；野外搜索栏支持横向滑动并通过中文 OCR 找资源。保留原有奖励、任务、联盟帮助及容错测试。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
