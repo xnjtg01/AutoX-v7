@@ -21,7 +21,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-  private static final String VERSION = "1.6.0";
+  private static final String VERSION = "1.7.0";
   private static final String[] TASKS = {"自动领取奖励","资源采集","自动打野怪","训练士兵","加入集结","每日任务","联盟帮助"};
   private final StringBuilder records=new StringBuilder();
   private TextView status, logView;
@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
     addButton(root,"⑤ 检查无障碍记录",v->record("INFO","无障碍","包名="+BenBenAccessibilityService.lastPackage+
       "，事件="+BenBenAccessibilityService.lastEvent));
     TextView collection=new TextView(this);
-    collection.setText("\n已按实际诊断图修复：国内服邮件全局一键领取、成长任务底部每日任务切换，以及失败后的自动关闭弹窗并返回城镇。保留其他任务模板匹配、中文 OCR、浮窗和日志。仍需实机验证。");
+    collection.setText("\nV1.7：所有 Root 点击时自动隐藏浮窗；自动识别延迟出现的离线收益确认、奖励结算弹窗；每日任务点击后自动验证并关闭；每次测试独立保存截图。");
     root.addView(collection);
     addButton(root,"▶ 一键采样不同画面（5秒后切换游戏）",v->{
       if(Build.VERSION.SDK_INT>=23 && !Settings.canDrawOverlays(this)){
@@ -274,6 +274,7 @@ public class MainActivity extends Activity {
     record("INFO","启动","版本 "+VERSION+" | 设备："+android.os.Build.MODEL+" | 诊断日志本地保存，绝不自动上传");
   }
   @Override protected void onDestroy(){
+    if(captureSession!=null)captureSession.stop();
     RootBridge.setTouchGuard(null);
     if(overlay!=null)overlay.hide();
     super.onDestroy();
