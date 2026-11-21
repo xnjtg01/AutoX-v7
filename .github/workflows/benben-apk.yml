@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 # Collapse rapid development commits into one build, avoiding unnecessary Actions minutes.
 concurrency:
-  group: benben-apk-${{ github.ref }}
+  group: benben-apk-v2-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
