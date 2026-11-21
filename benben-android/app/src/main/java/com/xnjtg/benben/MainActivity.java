@@ -91,6 +91,36 @@ public class MainActivity extends Activity {
       public void after()throws Exception{overlay.afterScreenshot();}
     },new KingshotImageMatcher(getAssets()));
     status=new TextView(this);status.setText("等待测试");status.setPadding(0,12,0,12);root.addView(status);
+
+    // The four categories come directly from the user's original APK
+    // (assets/script.uip), and match the domestic game's horizontal strip.
+    TextView resourceLabel=new TextView(this);
+    resourceLabel.setText("采集资源（国内服横向列表）");
+    resourceLabel.setTextColor(Color.rgb(15,43,78));
+    resourceLabel.setTextSize(16);
+    root.addView(resourceLabel);
+    Spinner resourceSpinner=new Spinner(this);
+    ArrayAdapter<String> resourceAdapter=new ArrayAdapter<>(this,
+      android.R.layout.simple_spinner_item,DomesticResourcePicker.RESOURCES);
+    resourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+    resourceSpinner.setAdapter(resourceAdapter);
+    String savedResource=getSharedPreferences("benben-config",MODE_PRIVATE)
+      .getString("gatherResource","石材");
+    int select=0;
+    for(int i=0;i<DomesticResourcePicker.RESOURCES.length;i++)
+      if(DomesticResourcePicker.RESOURCES[i].equals(savedResource)){select=i;break;}
+    resourceSpinner.setSelection(select);
+    captureSession.setGatherResource(DomesticResourcePicker.RESOURCES[select]);
+    resourceSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
+      @Override public void onItemSelected(AdapterView<?> parent,View view,int position,long id){
+        String selected=DomesticResourcePicker.RESOURCES[position];
+        captureSession.setGatherResource(selected);
+        getSharedPreferences("benben-config",MODE_PRIVATE)
+          .edit().putString("gatherResource",selected).apply();
+      }
+      @Override public void onNothingSelected(AdapterView<?> parent){}
+    });
+
     addButton(root,"① Root 权限检测",v->task("Root 检测",()->{
       try {record("OK","Root 检测",RootBridge.checkRoot());}
       catch(Exception e){record("FAIL","Root 检测",e.toString());}
